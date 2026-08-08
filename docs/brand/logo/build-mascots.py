@@ -30,6 +30,7 @@ from pathlib import Path
 
 OUT_DIR = Path(__file__).parent
 RUNTIME_ASSET_DIR = OUT_DIR.parents[2] / "src" / "assets" / "brand"
+PUBLIC_ASSET_DIR = OUT_DIR.parents[2] / "public"
 RUNTIME_ASSET_NAMES = (
     "mascot-head.svg",
     "mascot-thinking.svg",
@@ -349,11 +350,15 @@ def build_lockup() -> None:
 
 
 def sync_runtime_assets() -> None:
-    """คัดลอกมาสคอตที่เว็บใช้จริงจากไฟล์ generated ชุดเดียวกัน"""
+    """คัดลอกไฟล์ generated ที่เว็บใช้จริงไปยังตำแหน่ง build ของ Vite"""
     RUNTIME_ASSET_DIR.mkdir(parents=True, exist_ok=True)
     for name in RUNTIME_ASSET_NAMES:
         shutil.copyfile(OUT_DIR / name, RUNTIME_ASSET_DIR / name)
         print(f"  คัดลอก {name} ไป src/assets/brand")
+
+    PUBLIC_ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(OUT_DIR / "favicon.svg", PUBLIC_ASSET_DIR / "favicon.svg")
+    print("  คัดลอก favicon.svg ไป public")
 
 
 def main() -> None:

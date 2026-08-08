@@ -64,7 +64,7 @@ export function PrivacyPolicy() {
           และ{' '}
           <a className={policyLinkClassName} href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">นโยบายความเป็นส่วนตัวของ Google</a>
         </p>
-        <p className="font-medium text-slate-900">
+        <p className="font-medium text-foreground">
           เพราะเนื้อหาของคุณถูกส่งให้ผู้ให้บริการภายนอกประมวลผล โปรดอย่าใส่ข้อมูลลับ ข้อมูลส่วนบุคคลที่อ่อนไหว
           หรือข้อมูลที่คุณไม่มีสิทธิ์เผยแพร่ ลงในเอกสารที่ส่งตรวจ
         </p>
@@ -75,22 +75,22 @@ export function PrivacyPolicy() {
           ระบบนี้<strong>ไม่มีฐานข้อมูลโดยตั้งใจ</strong> จึงไม่มีที่ให้เก็บเอกสารของคุณไว้ถาวร
           สิ่งที่ถูกเก็บมีเพียงสามอย่างนี้ และทุกอย่างมีกำหนดลบอัตโนมัติ
         </p>
-        <div className="overflow-x-auto">
+        <div role="region" tabIndex={0} aria-label="ตารางข้อมูลชั่วคราวบนเซิร์ฟเวอร์" className="overflow-x-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-300 text-slate-900">
+              <tr className="border-b border-border text-foreground">
                 <th className="py-2 pr-3 font-semibold">เก็บอะไร</th>
                 <th className="py-2 pr-3 font-semibold">เพื่ออะไร</th>
                 <th className="py-2 font-semibold">นานแค่ไหน</th>
               </tr>
             </thead>
             <tbody className="align-top">
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-border">
                 <td className="py-3 pr-3">ตัวนับจำนวนครั้ง คู่กับค่าแฮชของ IP และของรหัสนิรนาม</td>
                 <td className="py-3 pr-3">จำกัดการใช้งานที่ 10 ครั้งต่อชั่วโมง เพื่อกันการใช้งานเกินควรและค่าใช้จ่ายบานปลาย</td>
                 <td className="py-3">1 ชั่วโมง</td>
               </tr>
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-border">
                 <td className="py-3 pr-3">ตัวนับงบประมาณรายวันของทั้งระบบ (ไม่ผูกกับผู้ใช้คนใด)</td>
                 <td className="py-3 pr-3">หยุดให้บริการชั่วคราวเมื่อใช้งบของวันครบ</td>
                 <td className="py-3">36 ชั่วโมง</td>
@@ -123,10 +123,10 @@ export function PrivacyPolicy() {
           (localStorage และ sessionStorage) ซึ่งกฎหมายคุ้มครองข้อมูลส่วนบุคคลนับเป็นเทคโนโลยีคล้ายคุกกี้
           จึงเปิดเผยไว้ทั้งหมดตามนี้ ทุกรายการถูกเก็บอยู่ในเครื่องของคุณเอง ไม่ได้ถูกส่งไปเก็บที่เซิร์ฟเวอร์ของเรา
         </p>
-        <div className="overflow-x-auto">
+        <div role="region" tabIndex={0} aria-label="ตารางข้อมูลในเบราว์เซอร์" className="overflow-x-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           <table className="w-full min-w-[38rem] border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-300 text-slate-900">
+              <tr className="border-b border-border text-foreground">
                 <th className="py-2 pr-3 font-semibold">ชื่อรายการ</th>
                 <th className="py-2 pr-3 font-semibold">เก็บไว้ที่ไหน</th>
                 <th className="py-2 pr-3 font-semibold">เก็บไปทำไม</th>
@@ -135,8 +135,8 @@ export function PrivacyPolicy() {
             </thead>
             <tbody className="align-top">
               {ACTIVE_BROWSER_STORAGE_ENTRIES.map((entry) => (
-                <tr key={entry.key} className="border-b border-slate-200 last:border-b-0">
-                  <td className="py-3 pr-3"><code className="rounded bg-slate-100 px-1 py-0.5 text-xs break-all">{entry.key}</code></td>
+                <tr key={entry.key} className="border-b border-border last:border-b-0">
+                  <td className="py-3 pr-3"><code className="rounded bg-muted px-1 py-0.5 text-xs break-all">{entry.key}</code></td>
                   <td className="py-3 pr-3">{entry.storageAreaLabel}</td>
                   <td className="py-3 pr-3">{entry.purpose}</td>
                   <td className="py-3">{entry.lifetime}</td>

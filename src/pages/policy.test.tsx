@@ -64,6 +64,15 @@ describe('หน้านโยบายความเป็นส่วนต�
     expect(pageText()).toContain('10 ครั้งต่อชั่วโมง')
   })
 
+  it('ทำให้ตารางกว้างเลื่อนได้ด้วยคีย์บอร์ดและมีชื่อที่โปรแกรมอ่านหน้าจอเข้าใจ', () => {
+    render(<PrivacyPolicy />)
+
+    const serverTable = screen.getByRole('region', { name: 'ตารางข้อมูลชั่วคราวบนเซิร์ฟเวอร์' })
+    const browserTable = screen.getByRole('region', { name: 'ตารางข้อมูลในเบราว์เซอร์' })
+    expect(serverTable).toHaveAttribute('tabindex', '0')
+    expect(browserTable).toHaveAttribute('tabindex', '0')
+  })
+
   it('มีหัวข้อคุกกี้อยู่ในหน้าเดียวกัน และบอกตรง ๆ ว่าไม่ตั้งคุกกี้', () => {
     render(<PrivacyPolicy />)
 

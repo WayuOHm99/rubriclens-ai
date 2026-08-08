@@ -59,7 +59,7 @@
 
 * { box-sizing: border-box; }
 
-body { margin: 0; min-width: 320px; }
+body { margin: 0; }
 
 :root {
   /* Brand primitives are mirrored from docs/brand/tokens.css. Runtime CSS stays

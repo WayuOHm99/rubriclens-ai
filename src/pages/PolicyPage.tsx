@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { SiteFooter } from '@/components/SiteFooter'
 import { POLICY_LAST_UPDATED_LABEL, SITE_NAME } from '@/lib/site-info'
 
-export const policyLinkClassName = 'text-primary underline underline-offset-2 hover:text-[var(--rl-primary-hover)]'
+export const policyLinkClassName = 'text-primary underline underline-offset-2 hover:text-[var(--rl-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
 /** โครงหน้าที่หน้านโยบายทุกหน้าใช้ร่วมกัน เพื่อให้หัว-ท้ายและระยะห่างเหมือนกันทุกหน้า */
 export function PolicyPage({ title, summary, children }: { title: string, summary: string, children: ReactNode }) {
@@ -12,7 +12,7 @@ export function PolicyPage({ title, summary, children }: { title: string, summar
       <main className="min-h-screen overflow-x-hidden bg-background text-foreground">
         <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-8">
           <header className="mb-6 border-b border-border pb-5">
-            <a className={`text-sm font-medium ${policyLinkClassName}`} href="/">← กลับไปหน้าตรวจเอกสาร</a>
+            <a className={`inline-flex min-h-12 items-center text-sm font-medium ${policyLinkClassName}`} href="/">← กลับไปหน้าตรวจเอกสาร</a>
             <p className="mt-4 text-sm font-medium text-muted-foreground">{SITE_NAME}</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{title}</h1>
             <p className="mt-2 text-sm leading-7 text-muted-foreground">{summary}</p>

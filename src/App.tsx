@@ -183,6 +183,19 @@ function App() {
   const preparedDocument = useMemo(() => prepareDocument(text), [text])
   const referenceSummary = useMemo(() => analyzeReferences(preparedDocument.mainText), [preparedDocument.mainText])
   const rubricValidation = rubricSchema.safeParse({ version: 'rubric-editor-v1', sections: rubric })
+  const rubricIssues = rubricValidation.success ? [] : rubricValidation.error.issues
+  const invalidRubricFields = new Set(rubricIssues.flatMap((issue) => {
+    const [, sectionIndex, field] = issue.path
+    return typeof sectionIndex === 'number' && typeof field === 'string'
+      ? [`${sectionIndex}.${field}`]
+      : []
+  }))
+  const rubricIssueMessages = rubricIssues.map((issue) => {
+    const [, sectionIndex] = issue.path
+    if (typeof sectionIndex !== 'number') return issue.message
+    const sectionLabel = rubric[sectionIndex]?.title.trim() || `หัวข้อ ${sectionIndex + 1}`
+    return `${sectionLabel}: ${issue.message}`
+  })
   const documentTypeDefinition = getDocumentTypeDefinition(documentType)
   const availableRubricTemplates = getRubricTemplatesForDocumentType(documentType)
   const enabledWeight = rubric.filter((section) => section.enabled).reduce((total, section) => total + section.weight, 0)
@@ -661,27 +674,27 @@ function App() {
                   onChange={(event) => { reportTextField.onChange(event); markContentChanged(event.target.value) }}
                   disabled={state === 'analyzing' || isExtracting}
                 />
-                <div className="flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:justify-between sm:gap-4">
+                <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:justify-between sm:gap-4">
                   <span>{errors.reportText?.message ?? `ร่างถูกเก็บเฉพาะในแท็บนี้ และจะส่งเมื่อคุณกด “${documentTypeDefinition.actionLabel}”`}</span>
-                  <span className={exceedsRawLimit || exceedsAnalysisLimit ? 'font-medium text-red-700' : ''}>{text.length.toLocaleString()} ตัวอักษรทั้งหมด · {preparedDocument.mainText.length.toLocaleString()} ตัวอักษรที่จะวิเคราะห์</span>
+                  <span className={exceedsRawLimit || exceedsAnalysisLimit ? 'font-medium text-danger-foreground' : ''}>{text.length.toLocaleString()} ตัวอักษรทั้งหมด · {preparedDocument.mainText.length.toLocaleString()} ตัวอักษรที่จะวิเคราะห์</span>
                 </div>
               </div>
 
-              {(exceedsRawLimit || exceedsAnalysisLimit) && <Alert className="border-red-200 bg-red-50 text-red-950"><AlertCircle className="size-4" /><AlertTitle>เอกสารยังยาวเกินขนาดที่รองรับ</AlertTitle><AlertDescription>ระบบยังไม่ได้ตัดข้อความหรือส่งข้อมูลส่วนใด เนื้อหาเอกสารหลักต้องไม่เกิน {MAX_ANALYSIS_CHARS.toLocaleString()} ตัวอักษร และข้อความทั้งหมดรวมภาคผนวกต้องไม่เกิน {MAX_RAW_CHARS.toLocaleString()} ตัวอักษร</AlertDescription></Alert>}
+              {(exceedsRawLimit || exceedsAnalysisLimit) && <Alert className="border-danger-border bg-danger-soft text-danger-foreground"><AlertCircle className="size-4" /><AlertTitle>เอกสารยังยาวเกินขนาดที่รองรับ</AlertTitle><AlertDescription>ระบบยังไม่ได้ตัดข้อความหรือส่งข้อมูลส่วนใด เนื้อหาเอกสารหลักต้องไม่เกิน {MAX_ANALYSIS_CHARS.toLocaleString()} ตัวอักษร และข้อความทั้งหมดรวมภาคผนวกต้องไม่เกิน {MAX_RAW_CHARS.toLocaleString()} ตัวอักษร</AlertDescription></Alert>}
               {isTooShort && <Alert className="border-sky-200 bg-sky-50 text-sky-950"><AlertCircle className="size-4" /><AlertTitle>เอกสารค่อนข้างสั้น</AlertTitle><AlertDescription>ยังส่งตรวจได้ แต่ผล AI อาจไม่ครบถ้วน ควรใส่เนื้อหาหลักมากกว่า 100 ตัวอักษร</AlertDescription></Alert>}
 
               <div className="rounded-lg border border-dashed border-input bg-muted/50 p-4">
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md text-sm font-medium focus-within:ring-2 focus-within:ring-ring" htmlFor="pdf-upload"><Upload className="size-5 text-primary" /> อัปโหลด PDF <span className="font-normal text-muted-foreground">({PDF_LIMITS_LABEL})</span></label>
                 <input id="pdf-upload" className="sr-only" type="file" accept="application/pdf,.pdf" onChange={handleFile} disabled={state === 'analyzing' || isExtracting} />
-                {isExtracting && <div className="mt-3 space-y-2"><p className="flex items-center gap-2 text-sm text-primary"><LoaderCircle className="size-4 animate-spin" />กำลังอ่านข้อความจาก PDF {pdfProgress ? `${pdfProgress.completed}/${pdfProgress.total} หน้า` : ''}</p>{pdfProgress && <Progress value={(pdfProgress.completed / pdfProgress.total) * 100} />}<Button type="button" size="sm" variant="outline" onClick={() => pdfAbortRef.current?.abort()}>ยกเลิกการอ่าน PDF</Button></div>}
-                {fileName && <p className="mt-2 break-all text-sm text-slate-700"><FileText className="mr-1 inline size-4" />{fileName}</p>}
-                {fileNotice && <p className="mt-2 text-sm leading-6 text-slate-600" aria-live="polite">{fileNotice}</p>}
+                {isExtracting && <div className="mt-3 space-y-2"><p className="flex items-center gap-2 text-sm text-primary"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />กำลังอ่านข้อความจาก PDF {pdfProgress ? `${pdfProgress.completed}/${pdfProgress.total} หน้า` : ''}</p>{pdfProgress && <Progress value={(pdfProgress.completed / pdfProgress.total) * 100} aria-label="ความคืบหน้าการอ่าน PDF" aria-valuetext={`อ่านแล้ว ${pdfProgress.completed} จาก ${pdfProgress.total} หน้า`} />}<Button type="button" size="sm" variant="outline" onClick={() => pdfAbortRef.current?.abort()}>ยกเลิกการอ่าน PDF</Button></div>}
+                {fileName && <p className="mt-2 break-all text-sm text-foreground"><FileText className="mr-1 inline size-4" />{fileName}</p>}
+                {fileNotice && <p className="mt-2 text-sm leading-6 text-muted-foreground" aria-live="polite">{fileNotice}</p>}
               </div>
               {warnings.map((warning) => <Alert key={warning} className="border-amber-200 bg-amber-50 text-amber-950"><AlertCircle className="size-4" /><AlertTitle>โปรดตรวจข้อความจาก PDF</AlertTitle><AlertDescription>{warning}</AlertDescription></Alert>)}
               <div className="space-y-2">
                 <Button className="min-h-12 w-full text-base sm:w-auto sm:min-w-44" onClick={() => void startAnalysis()} disabled={!canAnalyze}><CheckCircle2 />{documentTypeDefinition.actionLabel}</Button>
-                {!text.trim() && <p className="text-sm text-slate-500">วางข้อความหรือเลือก PDF ก่อน ปุ่มนี้จึงจะกดได้</p>}
-                {text.trim() && !rubricValidation.success && <p className="text-sm text-red-700">โปรดแก้เกณฑ์การตรวจให้ถูกต้องก่อนส่ง</p>}
+                {!text.trim() && <p className="text-sm text-muted-foreground">วางข้อความหรือเลือก PDF ก่อน ปุ่มนี้จึงจะกดได้</p>}
+                {text.trim() && !rubricValidation.success && <p className="text-sm text-danger-foreground">โปรดแก้เกณฑ์การตรวจให้ถูกต้องก่อนส่ง</p>}
                 <p className="max-w-2xl text-xs leading-5 text-muted-foreground">เมื่อกดตรวจ เนื้อหาเอกสารหลัก ประเภทเอกสาร และเกณฑ์จะถูกส่งไปยัง Google Gemini ผ่าน Cloudflare Worker ผล AI อาจคลาดเคลื่อน ระบบไม่เก็บไฟล์หรือข้อความต้นฉบับถาวร และอาจพักผลสำเร็จไว้ไม่เกิน 10 นาทีเพื่อป้องกันการส่งซ้ำ <a className="text-primary underline underline-offset-2" href={PRIVACY_POLICY_PATH}>นโยบายความเป็นส่วนตัวของเรา</a> · <a className="text-primary underline underline-offset-2" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">นโยบายของ Google</a></p>
               </div>
             </CardContent>
@@ -703,32 +716,33 @@ function App() {
             <div className="flex flex-wrap gap-2">
               <div className="flex flex-wrap gap-2"><Badge variant="outline">ใช้ {rubric.filter((section) => section.enabled).length}/{rubric.length} หัวข้อ</Badge><Badge variant="outline">น้ำหนักรวม {Number.isFinite(enabledWeight) ? enabledWeight : 'ไม่ถูกต้อง'}</Badge></div>
             </div>
-            <Button type="button" variant="outline" aria-expanded={showAdvancedRubric} onClick={() => setShowAdvancedRubric((value) => !value)}><ChevronDown className={showAdvancedRubric ? 'rotate-180 transition-transform' : 'transition-transform'} />{showAdvancedRubric ? 'ซ่อนการตั้งค่าขั้นสูง' : 'แก้ไขหัวข้อและน้ำหนัก'}</Button>
+            <Button type="button" variant="outline" aria-expanded={showAdvancedRubric} onClick={() => setShowAdvancedRubric((value) => !value)}><ChevronDown className={showAdvancedRubric ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'} />{showAdvancedRubric ? 'ซ่อนการตั้งค่าขั้นสูง' : 'แก้ไขหัวข้อและน้ำหนัก'}</Button>
             {showAdvancedRubric && <div className="space-y-3" aria-label="การตั้งค่าเกณฑ์ขั้นสูง">
-              {rubric.map((section) => <div key={section.id} className={`rounded-lg border p-4 ${section.enabled ? 'bg-card' : 'bg-muted opacity-75'}`}>
+              {rubric.map((section, sectionIndex) => <div key={section.id} className={`rounded-lg border p-4 ${section.enabled ? 'bg-card' : 'bg-muted opacity-75'}`}>
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_7rem_auto] lg:items-start">
-                  <label className="space-y-1 text-sm font-medium text-slate-600"><span>ชื่อหัวข้อ</span><Input aria-label={`ชื่อหัวข้อ ${section.title}`} value={section.title} onChange={(event) => updateSection(section.id, { title: event.target.value })} disabled={controlsLocked} /></label>
-                  <label className="space-y-1 text-sm font-medium text-slate-600"><span>สิ่งที่ต้องการตรวจ</span><Textarea aria-label={`เกณฑ์ ${section.title}`} className="min-h-24" value={section.criteria} onChange={(event) => updateSection(section.id, { criteria: event.target.value })} disabled={controlsLocked} /></label>
-                  <label className="space-y-1 text-sm font-medium text-slate-600"><span>น้ำหนัก</span><Input aria-label={`น้ำหนัก ${section.title}`} type="number" min="0" max="100" step="0.5" value={Number.isNaN(section.weight) ? '' : section.weight} onChange={(event) => updateSection(section.id, { weight: event.target.valueAsNumber })} disabled={controlsLocked} /></label>
+                  <label className="space-y-1 text-sm font-medium text-muted-foreground"><span>ชื่อหัวข้อ</span><Input aria-label={`ชื่อหัวข้อ ${section.title}`} aria-invalid={invalidRubricFields.has(`${sectionIndex}.title`) || undefined} aria-describedby={invalidRubricFields.has(`${sectionIndex}.title`) ? 'rubric-validation-summary' : undefined} value={section.title} onChange={(event) => updateSection(section.id, { title: event.target.value })} disabled={controlsLocked} /></label>
+                  <label className="space-y-1 text-sm font-medium text-muted-foreground"><span>สิ่งที่ต้องการตรวจ</span><Textarea aria-label={`เกณฑ์ ${section.title}`} aria-invalid={invalidRubricFields.has(`${sectionIndex}.criteria`) || undefined} aria-describedby={invalidRubricFields.has(`${sectionIndex}.criteria`) ? 'rubric-validation-summary' : undefined} className="min-h-24" value={section.criteria} onChange={(event) => updateSection(section.id, { criteria: event.target.value })} disabled={controlsLocked} /></label>
+                  <label className="space-y-1 text-sm font-medium text-muted-foreground"><span>น้ำหนัก</span><Input aria-label={`น้ำหนัก ${section.title}`} aria-invalid={invalidRubricFields.has(`${sectionIndex}.weight`) || undefined} aria-describedby={invalidRubricFields.has(`${sectionIndex}.weight`) ? 'rubric-validation-summary' : undefined} type="number" min="0" max="100" step="0.5" value={Number.isNaN(section.weight) ? '' : section.weight} onChange={(event) => updateSection(section.id, { weight: event.target.valueAsNumber })} disabled={controlsLocked} /></label>
                   <div className="flex flex-wrap gap-2 lg:pt-7"><Button type="button" size="sm" variant={section.enabled ? 'outline' : 'secondary'} onClick={() => updateSection(section.id, { enabled: !section.enabled })} disabled={controlsLocked}>{section.enabled ? 'ไม่นำมาคิดคะแนน' : 'นำมาคิดคะแนน'}</Button><Button type="button" size="sm" variant="destructive" aria-label={`ลบ ${section.title}`} onClick={() => removeSection(section)} disabled={controlsLocked}>ลบหัวข้อ</Button></div>
                 </div>
               </div>)}
               <Button type="button" variant="outline" onClick={addSection} disabled={controlsLocked || rubric.length >= 30}>เพิ่มหัวข้อใหม่</Button>
             </div>}
-            {!rubricValidation.success && <Alert className="border-red-200 bg-red-50 text-red-950"><AlertCircle className="size-4" /><AlertTitle>เกณฑ์ยังไม่พร้อม</AlertTitle><AlertDescription>{rubricValidation.error.issues.map((issue) => issue.message).join(' · ')}</AlertDescription></Alert>}
+            {!rubricValidation.success && <Alert id="rubric-validation-summary" className="border-danger-border bg-danger-soft text-danger-foreground"><AlertCircle className="size-4" /><AlertTitle>เกณฑ์ยังไม่พร้อม</AlertTitle><AlertDescription>{rubricIssueMessages.join(' · ')}</AlertDescription></Alert>}
           </CardContent>
         </Card>
 
-        {state === 'analyzing' && <section ref={analyzingRef} tabIndex={-1} className="mt-5 scroll-mt-4 outline-none" aria-label="กำลังตรวจเอกสาร" aria-live="polite">
+        {state === 'analyzing' && <section ref={analyzingRef} tabIndex={-1} className="mt-5 scroll-mt-4 outline-none" aria-label="กำลังตรวจเอกสาร">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />กำลังตรวจเอกสาร</CardTitle>
+              <CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />กำลังตรวจเอกสาร</CardTitle>
               <CardDescription>รายการด้านล่างเป็นความคืบหน้าโดยประมาณ เอกสารยาวอาจใช้เวลาถึง 2 นาที</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
               <img data-mascot="thinking" src={thinkingMascotUrl} alt="" className="mx-auto h-36 w-auto sm:h-40" />
               <div className="space-y-4">
-                <Progress value={((progressIndex + 1) / analysisSteps.length) * 100} />
+                <Progress value={((progressIndex + 1) / analysisSteps.length) * 100} aria-label="ความคืบหน้าการตรวจโดยประมาณ" aria-valuetext={`ขั้นตอนปัจจุบัน: ${analysisSteps[progressIndex]}`} />
+                <p className="sr-only" aria-live="polite">ขั้นตอนปัจจุบัน: {analysisSteps[progressIndex]}</p>
                 <ol className="space-y-2 text-sm">{analysisSteps.map((step, index) => <li key={step} className={index < progressIndex ? 'text-success-foreground' : index === progressIndex ? 'font-medium text-primary' : 'text-muted-foreground'}>{index < progressIndex ? '✓' : index === progressIndex ? '•' : '○'} {step}</li>)}</ol>
                 <Button variant="outline" onClick={cancelAnalysis}>ยกเลิกการตรวจ</Button>
               </div>

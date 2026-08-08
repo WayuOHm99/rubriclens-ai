@@ -1,6 +1,6 @@
 import { COPYRIGHT_YEAR, PRIVACY_POLICY_PATH, REPOSITORY_URL, SITE_NAME, TERMS_PATH } from '@/lib/site-info'
 
-const linkClassName = 'text-muted-foreground underline-offset-4 hover:text-primary hover:underline'
+const linkClassName = 'inline-flex min-h-12 items-center text-muted-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
 /** ท้ายเว็บที่ใช้ร่วมกันทุกหน้า เก็บไว้เท่าที่ผู้ใช้ต้องใช้จริง: ลิขสิทธิ์ นโยบาย ข้อกำหนด และซอร์สโค้ด */
 export function SiteFooter() {

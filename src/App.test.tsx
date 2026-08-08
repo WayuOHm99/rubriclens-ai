@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -90,6 +90,25 @@ describe('App', () => {
     await user.upload(screen.getByLabelText(/อัปโหลด PDF/), new File(['pdf'], 'report.pdf', { type: 'application/pdf' }))
     expect(await screen.findByText(/อ่าน PDF ครบ 1 หน้าแล้ว/)).toBeInTheDocument()
     expect(screen.getByLabelText('ข้อความเอกสาร')).toHaveValue('บทนำ โครงงานทดสอบ PDF')
+  })
+
+  it('announces PDF extraction progress with a name and page count', async () => {
+    let finishExtraction: ((value: { pageCount: number, text: string, warnings: string[] }) => void) | undefined
+    vi.mocked(extractPdfText).mockImplementation((_file, options) => {
+      options?.onProgress?.(2, 4)
+      return new Promise((resolve) => { finishExtraction = resolve })
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.upload(screen.getByLabelText(/อัปโหลด PDF/), new File(['pdf'], 'report.pdf', { type: 'application/pdf' }))
+
+    const progress = await screen.findByRole('progressbar', { name: 'ความคืบหน้าการอ่าน PDF' })
+    expect(progress).toHaveAttribute('aria-valuenow', '50')
+    expect(progress).toHaveAttribute('aria-valuetext', 'อ่านแล้ว 2 จาก 4 หน้า')
+
+    finishExtraction?.({ pageCount: 4, text: 'บทนำ โครงงานทดสอบ PDF', warnings: [] })
+    expect(await screen.findByText(/อ่าน PDF ครบ 4 หน้าแล้ว/)).toBeInTheDocument()
   })
 
   it('warns when a PDF has no text layer and does not offer OCR', async () => {
@@ -241,11 +260,15 @@ describe('App', () => {
     expect(screen.getByLabelText('ชื่อหัวข้อ หัวข้อใหม่')).toBeInTheDocument()
   })
 
-  it('rejects a rubric with a negative weight', () => {
+  it('identifies the rubric row and control that needs correction', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'แก้ไขหัวข้อและน้ำหนัก' }))
-    fireEvent.change(screen.getByLabelText('น้ำหนัก บทนำและบริบท'), { target: { value: '-1', valueAsNumber: -1 } })
-    expect(screen.getByText(/น้ำหนักต้องไม่ติดลบ/)).toBeInTheDocument()
+    const weightInput = screen.getByLabelText('น้ำหนัก บทนำและบริบท')
+    fireEvent.change(weightInput, { target: { value: '-1', valueAsNumber: -1 } })
+
+    expect(screen.getByText(/บทนำและบริบท: น้ำหนักต้องไม่ติดลบ/)).toBeInTheDocument()
+    expect(weightInput).toHaveAttribute('aria-invalid', 'true')
+    expect(weightInput).toHaveAttribute('aria-describedby', 'rubric-validation-summary')
   })
 
   it('shows detailed mock results after one click', async () => {
@@ -253,7 +276,7 @@ describe('App', () => {
     render(<App />)
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับตรวจ')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
-    expect(screen.getByText(/ตรวจขนาดเอกสาร/)).toBeInTheDocument()
+    expect(within(screen.getByRole('list')).getByText(/ตรวจขนาดเอกสาร/)).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
     expect(screen.getByText('ความสอดคล้องของเอกสาร')).toBeInTheDocument()
     expect(screen.getByText('สิ่งที่ควรแก้ก่อนส่ง')).toBeInTheDocument()
@@ -373,6 +396,11 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     const progressSection = await screen.findByRole('region', { name: 'กำลังตรวจเอกสาร' })
+    const progress = screen.getByRole('progressbar', { name: 'ความคืบหน้าการตรวจโดยประมาณ' })
+    expect(progress).toHaveAttribute('aria-valuenow')
+    expect(progress).toHaveAttribute('aria-valuetext', 'ขั้นตอนปัจจุบัน: ตรวจขนาดเอกสาร')
+    expect(progressSection).not.toHaveAttribute('aria-live')
+    expect(screen.getByText('ขั้นตอนปัจจุบัน: ตรวจขนาดเอกสาร')).toHaveAttribute('aria-live', 'polite')
     await waitFor(() => {
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
       expect(progressSection).toHaveFocus()

@@ -26,6 +26,9 @@ const DEFAULT_DAILY_TOKEN_BUDGET = 2_000_000
 const DEFAULT_PRIMARY_MODEL = 'gemini-3.6-flash'
 const DEFAULT_FALLBACK_MODEL = 'gemini-3.5-flash-lite'
 const GEMINI_RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
+const GEMINI_REQUEST_TIMEOUT_MS = 60_000
+const GEMINI_TOKEN_COUNT_TIMEOUT_MS = 10_000
+const GEMINI_ANALYSIS_TIMEOUT_MS = 100_000
 const AI_CHECK_TIMEOUT_MS = 5_000
 const AI_CHECK_CACHE_SECONDS = 5 * 60
 const AI_CHECK_CACHE_KEY = 'health:ai-reachable'
@@ -36,6 +39,12 @@ const FOREIGN_SCRIPT_RETRIES = 'foreign-script-retries'
 const FOREIGN_SCRIPT_PERSISTED = 'foreign-script-persisted'
 
 type RateLimitStore = Pick<KVNamespace, 'get' | 'put'>
+
+type ModelCallControl = {
+  signal: AbortSignal
+  requestSignal: AbortSignal
+  deadlineSignal: AbortSignal
+}
 
 export type AnalysisEnv = Partial<Pick<Env,
   'GEMINI_API_KEY' | 'GEMINI_MODEL' | 'GEMINI_FALLBACK_MODEL' | 'MAX_CHARS' | 'MOCK_ANALYSIS' | 'DAILY_BUDGET_LIMIT' |
@@ -411,11 +420,26 @@ function exhaustedGeminiFailure(error: unknown) {
   return failure
 }
 
-async function countPromptTokens(ai: GoogleGenAI, model: string, systemInstruction: string, prompt: string) {
+function stoppedModelCallFailure(control: ModelCallControl) {
+  if (control.requestSignal.aborted) return new ApiFailure('REQUEST_CANCELLED', 'คำขอตรวจถูกยกเลิกแล้ว', 499)
+  return new ApiFailure('GEMINI_TIMEOUT', 'ระบบ AI ใช้เวลาตอบนานเกินกำหนด โปรดลองใหม่อีกครั้ง', 504, true)
+}
+
+function ensureModelCallIsActive(control: ModelCallControl) {
+  if (control.signal.aborted) throw stoppedModelCallFailure(control)
+}
+
+async function countPromptTokens(ai: GoogleGenAI, model: string, systemInstruction: string, prompt: string, control: ModelCallControl) {
+  ensureModelCallIsActive(control)
   try {
-    const count = await ai.models.countTokens({ model, contents: `${systemInstruction}\n\n${prompt}` })
+    const count = await ai.models.countTokens({
+      model,
+      contents: `${systemInstruction}\n\n${prompt}`,
+      config: { httpOptions: { timeout: GEMINI_TOKEN_COUNT_TIMEOUT_MS }, abortSignal: control.signal },
+    })
     return count.totalTokens ?? 0
   } catch (error) {
+    ensureModelCallIsActive(control)
     throw mapGeminiError(error)
   }
 }
@@ -426,10 +450,15 @@ type ModelCall = {
   promptTokens: number
 }
 
-async function generateValidated(ai: GoogleGenAI, model: string, call: ModelCall, activeSections: ActiveSection[], ledger: TokenLedger, store: RateLimitStore | undefined) {
+async function generateValidated(
+  ai: GoogleGenAI, model: string, call: ModelCall, activeSections: ActiveSection[], ledger: TokenLedger,
+  store: RateLimitStore | undefined, control: ModelCallControl,
+) {
   const generate = async (modelCall: ModelCall) => {
+    ensureModelCallIsActive(control)
     const maxOutputTokens = estimateOutputTokens(activeSections.length)
     await ledger.charge(modelCall.promptTokens + maxOutputTokens)
+    ensureModelCallIsActive(control)
     const response = await ai.models.generateContent({
       model,
       contents: modelCall.prompt,
@@ -438,6 +467,7 @@ async function generateValidated(ai: GoogleGenAI, model: string, call: ModelCall
         responseMimeType: 'application/json',
         responseJsonSchema: ANALYSIS_RESPONSE_JSON_SCHEMA,
         maxOutputTokens,
+        abortSignal: control.signal,
         // Gemini 3 defaults to deeper thinking, which can consume the output
         // allowance and exceed the browser's two-minute request window. Rubric
         // evaluation is constrained instruction-following, so low is enough.
@@ -458,7 +488,7 @@ async function generateValidated(ai: GoogleGenAI, model: string, call: ModelCall
     }
     const correction = first ? THAI_SCRIPT_CORRECTION_INSTRUCTION : 'Return valid JSON with every rubric id exactly once.'
     const retryPrompt = `${call.prompt}\n\n${correction}`
-    const retryPromptTokens = await countPromptTokens(ai, model, call.systemInstruction, retryPrompt)
+    const retryPromptTokens = await countPromptTokens(ai, model, call.systemInstruction, retryPrompt, control)
     const retry = validateExactSections(safelyParseJson(await generate({ ...call, prompt: retryPrompt, promptTokens: retryPromptTokens })), activeSections)
     if (retry) return retry
     // Returning the complete first answer beats failing a review the user has
@@ -467,6 +497,7 @@ async function generateValidated(ai: GoogleGenAI, model: string, call: ModelCall
     throw new ApiFailure('INVALID_AI_RESPONSE', 'คำตอบจาก AI ไม่ครบตามหัวข้อที่กำหนด โปรดลองใหม่อีกครั้ง', 502, true)
   } catch (error) {
     if (error instanceof ApiFailure) throw error
+    ensureModelCallIsActive(control)
     throw mapGeminiError(error)
   }
 }
@@ -482,9 +513,9 @@ type ModelPlan = {
   chunks: ModelCall[]
 }
 
-async function prepareModelPlan(ai: GoogleGenAI, model: string, payload: AnalysisPayload, activeSections: ActiveSection[]): Promise<ModelPlan> {
+async function prepareModelPlan(ai: GoogleGenAI, model: string, payload: AnalysisPayload, activeSections: ActiveSection[], control: ModelCallControl): Promise<ModelPlan> {
   const fullPrompt = buildAnalysisContents(payload, activeSections)
-  const fullTokenCount = await countPromptTokens(ai, model, SYSTEM_INSTRUCTION, fullPrompt)
+  const fullTokenCount = await countPromptTokens(ai, model, SYSTEM_INSTRUCTION, fullPrompt, control)
   if (fullTokenCount <= SINGLE_CALL_TOKEN_LIMIT) {
     return { model, chunks: [{ systemInstruction: SYSTEM_INSTRUCTION, prompt: fullPrompt, promptTokens: fullTokenCount }] }
   }
@@ -492,7 +523,7 @@ async function prepareModelPlan(ai: GoogleGenAI, model: string, payload: Analysi
   const texts = splitDocumentForAnalysis(payload.reportText)
   if (texts.length > MAX_ANALYSIS_CHUNKS) throw new ApiFailure('DOCUMENT_TOKEN_LIMIT', 'เอกสารมี token มากเกินขนาดที่ระบบแบ่งวิเคราะห์ได้ โปรดลดเนื้อหาแล้วลองใหม่', 413)
   const prompts = texts.map((chunk, index) => buildAnalysisContents({ ...payload, reportText: chunk }, activeSections, { index: index + 1, total: texts.length }))
-  const tokenCounts = await Promise.all(prompts.map((prompt) => countPromptTokens(ai, model, SYSTEM_INSTRUCTION, prompt)))
+  const tokenCounts = await Promise.all(prompts.map((prompt) => countPromptTokens(ai, model, SYSTEM_INSTRUCTION, prompt, control)))
   const chunks = prompts.map((prompt, index) => ({ systemInstruction: SYSTEM_INSTRUCTION, prompt, promptTokens: tokenCounts[index] }))
   const plannedInputTokens = tokenCounts.reduce((sum, tokens) => sum + tokens, 0)
   if (chunks.some((chunk) => chunk.promptTokens > SINGLE_CALL_TOKEN_LIMIT) || plannedInputTokens > 1_000_000) {
@@ -508,19 +539,19 @@ async function prepareModelPlan(ai: GoogleGenAI, model: string, payload: Analysi
  */
 async function consolidateChunkFindings(
   ai: GoogleGenAI, model: string, responses: ModelResponse[], payload: AnalysisPayload, activeSections: ActiveSection[], ledger: TokenLedger,
-  store: RateLimitStore | undefined,
+  store: RateLimitStore | undefined, control: ModelCallControl,
 ) {
   const findings = responses.map((response, index) => compactChunkFindings(index + 1, response.sections))
   const prompt = buildConsolidationContents({
     referenceSummary: payload.referenceSummary, documentType: payload.documentType, findings, totalChunks: responses.length,
   }, activeSections)
-  const promptTokens = await countPromptTokens(ai, model, CONSOLIDATION_SYSTEM_INSTRUCTION, prompt)
+  const promptTokens = await countPromptTokens(ai, model, CONSOLIDATION_SYSTEM_INSTRUCTION, prompt, control)
   if (promptTokens > SINGLE_CALL_TOKEN_LIMIT) {
     throw new ApiFailure('CONSOLIDATION_INPUT_TOO_LARGE', 'ผลวิเคราะห์รายส่วนรวมกันแล้วใหญ่เกินกว่าจะสรุปในครั้งเดียว โปรดลดจำนวนหัวข้อหรือความยาวเอกสารแล้วลองใหม่', 413)
   }
 
   try {
-    return await generateValidated(ai, model, { systemInstruction: CONSOLIDATION_SYSTEM_INSTRUCTION, prompt, promptTokens }, activeSections, ledger, store)
+    return await generateValidated(ai, model, { systemInstruction: CONSOLIDATION_SYSTEM_INSTRUCTION, prompt, promptTokens }, activeSections, ledger, store, control)
   } catch (error) {
     if (error instanceof ApiFailure && error.code === 'INVALID_AI_RESPONSE') {
       throw new ApiFailure('CONSOLIDATION_FAILED', 'ระบบรวมผลวิเคราะห์ทุกส่วนของเอกสารไม่สำเร็จ จึงยังไม่แสดงคะแนนเพื่อไม่ให้ผลคลาดเคลื่อน โปรดลองใหม่อีกครั้ง', 502, true)
@@ -529,12 +560,15 @@ async function consolidateChunkFindings(
   }
 }
 
-async function generateModelPlan(ai: GoogleGenAI, plan: ModelPlan, payload: AnalysisPayload, activeSections: ActiveSection[], ledger: TokenLedger, store: RateLimitStore | undefined) {
+async function generateModelPlan(
+  ai: GoogleGenAI, plan: ModelPlan, payload: AnalysisPayload, activeSections: ActiveSection[], ledger: TokenLedger,
+  store: RateLimitStore | undefined, control: ModelCallControl,
+) {
   const responses: ModelResponse[] = []
-  for (const call of plan.chunks) responses.push(await generateValidated(ai, plan.model, call, activeSections, ledger, store))
+  for (const call of plan.chunks) responses.push(await generateValidated(ai, plan.model, call, activeSections, ledger, store, control))
   if (responses.length === 1) return responses[0]
 
-  const consolidated = await consolidateChunkFindings(ai, plan.model, responses, payload, activeSections, ledger, store)
+  const consolidated = await consolidateChunkFindings(ai, plan.model, responses, payload, activeSections, ledger, store, control)
   return {
     ...consolidated,
     qualityWarnings: uniqueLimited([
@@ -544,11 +578,12 @@ async function generateModelPlan(ai: GoogleGenAI, plan: ModelPlan, payload: Anal
   }
 }
 
-async function analyzeWithGemini(payload: AnalysisPayload, activeSections: ActiveSection[], env: AnalysisEnv, ledger: TokenLedger) {
+async function analyzeWithGemini(payload: AnalysisPayload, activeSections: ActiveSection[], env: AnalysisEnv, ledger: TokenLedger, control: ModelCallControl) {
   if (!env.GEMINI_API_KEY) throw new ApiFailure('AI_CONFIGURATION', 'ระบบยังไม่ได้ตั้งค่า Gemini API key กรุณาแจ้งผู้ดูแลระบบ', 503)
   const ai = new GoogleGenAI({
     apiKey: env.GEMINI_API_KEY,
     httpOptions: {
+      timeout: GEMINI_REQUEST_TIMEOUT_MS,
       retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 4, expBase: 2, jitter: 0.5, httpStatusCodes: GEMINI_RETRYABLE_STATUS_CODES },
     },
   })
@@ -558,12 +593,12 @@ async function analyzeWithGemini(payload: AnalysisPayload, activeSections: Activ
   let fallbackReason: ApiFailure | undefined
   let plan: ModelPlan
   try {
-    plan = await prepareModelPlan(ai, primaryModel, payload, activeSections)
+    plan = await prepareModelPlan(ai, primaryModel, payload, activeSections, control)
   } catch (error) {
     if (!fallbackModel || !canUseFallback(error)) throw error
     fallbackReason = error
     try {
-      plan = await prepareModelPlan(ai, fallbackModel, payload, activeSections)
+      plan = await prepareModelPlan(ai, fallbackModel, payload, activeSections, control)
     } catch (fallbackError) {
       throw canUseFallback(fallbackError) ? exhaustedGeminiFailure(fallbackError) : fallbackError
     }
@@ -576,13 +611,13 @@ async function analyzeWithGemini(payload: AnalysisPayload, activeSections: Activ
 
   let response: ModelResponse
   try {
-    response = await generateModelPlan(ai, plan, payload, activeSections, ledger, env.RATE_LIMIT)
+    response = await generateModelPlan(ai, plan, payload, activeSections, ledger, env.RATE_LIMIT, control)
   } catch (error) {
     if (!fallbackModel || plan.model === fallbackModel || !canUseFallback(error)) throw plan.model === fallbackModel && canUseFallback(error) ? exhaustedGeminiFailure(error) : error
     fallbackReason = error
     try {
-      const fallbackPlan = await prepareModelPlan(ai, fallbackModel, payload, activeSections)
-      response = await generateModelPlan(ai, fallbackPlan, payload, activeSections, ledger, env.RATE_LIMIT)
+      const fallbackPlan = await prepareModelPlan(ai, fallbackModel, payload, activeSections, control)
+      response = await generateModelPlan(ai, fallbackPlan, payload, activeSections, ledger, env.RATE_LIMIT, control)
       plan = fallbackPlan
     } catch (fallbackError) {
       throw canUseFallback(fallbackError) ? exhaustedGeminiFailure(fallbackError) : fallbackError
@@ -747,9 +782,15 @@ export async function handleAnalyze(request: Request, env: AnalysisEnv) {
   } else if (env.MOCK_ANALYSIS !== 'true') throw new ApiFailure('RATE_LIMIT_UNAVAILABLE', 'ระบบจำกัดคำขอยังไม่พร้อม กรุณาแจ้งผู้ดูแลระบบ', 503)
 
   const payload: AnalysisPayload = { reportText: prepared.mainText, referenceSummary: parsed.data.referenceSummary, documentType: parsed.data.documentType }
+  const deadlineSignal = AbortSignal.timeout(GEMINI_ANALYSIS_TIMEOUT_MS)
+  const modelCallControl: ModelCallControl = {
+    requestSignal: request.signal,
+    deadlineSignal,
+    signal: AbortSignal.any([request.signal, deadlineSignal]),
+  }
   const modelOutput = env.MOCK_ANALYSIS === 'true'
     ? { response: { ...mockModelResponse(activeSections), consistencyNotes: [`Mock: ${getDocumentTypeDefinition(parsed.data.documentType).consistencyLabel}`] }, model: 'mock-analysis-v1', chunkCount: 1 }
-    : await analyzeWithGemini(payload, activeSections, env, createTokenLedger(env))
+    : await analyzeWithGemini(payload, activeSections, env, createTokenLedger(env), modelCallControl)
   const serialized = serializeAnalysisResponse(
     apiVersion, parsed.data.documentType, parsed.data.rubric.version, modelOutput.model, modelOutput.chunkCount,
     prepared, modelOutput.response, activeSections,

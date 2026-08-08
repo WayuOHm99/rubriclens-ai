@@ -46,6 +46,16 @@ function modelResponse(sections: TestSection[], extra: Record<string, unknown> =
   })
 }
 
+function rejectWhenProviderIsAborted(config: { abortSignal?: AbortSignal } | undefined, onStarted: () => void) {
+  return new Promise<never>((_, reject) => {
+    onStarted()
+    const signal = config?.abortSignal
+    if (!signal) reject(new Error('analysis request did not pass an abort signal'))
+    else if (signal.aborted) reject(signal.reason)
+    else signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+  })
+}
+
 function analyzeRequest(payload: unknown, idempotencyKey: string) {
   return new Request('https://local.test/api/analyze', {
     method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey, [API_VERSION_HEADER]: String(API_VERSION) }, body: JSON.stringify(payload),
@@ -213,6 +223,12 @@ describe('POST /api/analyze', () => {
     expect(sdkMocks.generateContent.mock.calls[0][0].config.maxOutputTokens).toBe(1500)
     expect(sdkMocks.generateContent.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'low' })
     expect(sdkMocks.generateContent.mock.calls[0][0].contents).toContain('"id":"project"')
+    const providerSignals = [
+      ...sdkMocks.countTokens.mock.calls.map(([request]) => request.config?.abortSignal),
+      ...sdkMocks.generateContent.mock.calls.map(([request]) => request.config?.abortSignal),
+    ]
+    expect(providerSignals).not.toContain(undefined)
+    expect(new Set(providerSignals).size).toBe(1)
   })
 
   it('returns a safe error after the single JSON retry also fails', async () => {
@@ -252,7 +268,110 @@ describe('POST /api/analyze', () => {
     expect(result.model).toBe('fallback-model')
     expect(result.qualityWarnings[0]).toContain('ระบบใช้โมเดลสำรอง fallback-model')
     expect(sdkMocks.generateContent.mock.calls.map(([request]) => request.model)).toEqual(['primary-model', 'fallback-model'])
-    expect(sdkMocks.clientOptions[0]).toMatchObject({ httpOptions: { retryOptions: { attempts: 3, httpStatusCodes: [408, 429, 500, 502, 503, 504] } } })
+    expect(sdkMocks.clientOptions[0]).toMatchObject({ httpOptions: { timeout: 60_000, retryOptions: { attempts: 3, httpStatusCodes: [408, 429, 500, 502, 503, 504] } } })
+    expect(sdkMocks.countTokens.mock.calls[0][0].config).toMatchObject({ httpOptions: { timeout: 10_000 }, abortSignal: expect.any(AbortSignal) })
+    expect(sdkMocks.generateContent.mock.calls[0][0].config).toMatchObject({ abortSignal: sdkMocks.countTokens.mock.calls[0][0].config.abortSignal })
+  })
+
+  it('stops model work when the browser cancels its request', async () => {
+    let markProviderStarted = () => undefined
+    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
+    sdkMocks.countTokens.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+    const controller = new AbortController()
+    const rateLimit = new MemoryKv()
+    const request = new Request('https://local.test/api/analyze', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': 'cancel-model-request-key' }, body: JSON.stringify(body), signal: controller.signal,
+    })
+
+    const responsePromise = worker.fetch(request, geminiEnv({ RATE_LIMIT: rateLimit }))
+    await providerStarted
+    controller.abort()
+    const response = await responsePromise
+
+    expect(response.status).toBe(499)
+    expect(await response.json()).toMatchObject({ code: 'REQUEST_CANCELLED', retryable: false })
+    expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
+    expect(sdkMocks.generateContent).not.toHaveBeenCalled()
+    expect(rateLimit.keys().filter((key) => key.startsWith('idempotency:'))).toHaveLength(0)
+  })
+
+  it('stops without trying a fallback model when the Worker deadline expires', async () => {
+    const deadlineController = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
+    let markProviderStarted = () => undefined
+    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
+    sdkMocks.countTokens.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+    const rateLimit = new MemoryKv()
+
+    try {
+      const responsePromise = worker.fetch(analyzeRequest(body, 'model-deadline-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model', RATE_LIMIT: rateLimit }))
+      await providerStarted
+      deadlineController.abort()
+      const response = await responsePromise
+
+      expect(timeoutSpy).toHaveBeenCalledWith(100_000)
+      expect(response.status).toBe(504)
+      expect(await response.json()).toMatchObject({ code: 'GEMINI_TIMEOUT', retryable: true })
+      expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
+      expect(sdkMocks.generateContent).not.toHaveBeenCalled()
+      expect(rateLimit.keys().filter((key) => key.startsWith('idempotency:'))).toHaveLength(0)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
+  })
+
+  it('stops a generation in progress when the Worker deadline expires', async () => {
+    const deadlineController = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
+    let markProviderStarted = () => undefined
+    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+    sdkMocks.generateContent.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+
+    try {
+      const responsePromise = worker.fetch(analyzeRequest(body, 'generation-deadline-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model' }))
+      await providerStarted
+      deadlineController.abort()
+      const response = await responsePromise
+
+      expect(response.status).toBe(504)
+      expect(await response.json()).toMatchObject({ code: 'GEMINI_TIMEOUT', retryable: true })
+      expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
+  })
+
+  it('does not start generation if the deadline expires while reserving the token budget', async () => {
+    const deadlineController = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
+    const rateLimit = new MemoryKv()
+    const originalPut = rateLimit.put.bind(rateLimit)
+    let markBudgetChargeStarted = () => undefined
+    const budgetChargeStarted = new Promise<void>((resolve) => { markBudgetChargeStarted = resolve })
+    let releaseBudgetCharge = () => undefined
+    const budgetChargeCanFinish = new Promise<void>((resolve) => { releaseBudgetCharge = resolve })
+    vi.spyOn(rateLimit, 'put').mockImplementation(async (key, value) => {
+      if (key.startsWith('budget:tokens:')) {
+        markBudgetChargeStarted()
+        await budgetChargeCanFinish
+      }
+      await originalPut(key, value)
+    })
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+
+    try {
+      const responsePromise = worker.fetch(analyzeRequest(body, 'budget-deadline-key'), geminiEnv({ RATE_LIMIT: rateLimit }))
+      await budgetChargeStarted
+      deadlineController.abort()
+      releaseBudgetCharge()
+      const response = await responsePromise
+
+      expect(response.status).toBe(504)
+      expect(sdkMocks.generateContent).not.toHaveBeenCalled()
+    } finally {
+      timeoutSpy.mockRestore()
+    }
   })
 
   it('asks the model again when it mixes Japanese characters into the Thai review', async () => {
@@ -489,6 +608,12 @@ describe('multi-chunk consolidation', () => {
     expect(result.sections[0].score).toBe(3)
     expect(result.sections[0].evidence).toEqual(['ที่มาของรายงาน', 'ขอบเขตของรายงาน'])
     expect(result.documentInfo.analyzedChunkCount).toBe(2)
+    const providerSignals = [
+      ...sdkMocks.countTokens.mock.calls.map(([request]) => request.config?.abortSignal),
+      ...sdkMocks.generateContent.mock.calls.map(([request]) => request.config?.abortSignal),
+    ]
+    expect(providerSignals).not.toContain(undefined)
+    expect(new Set(providerSignals).size).toBe(1)
     expect(result.qualityWarnings.some((warning) => warning.includes('2 ส่วน'))).toBe(true)
   })
 

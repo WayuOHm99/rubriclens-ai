@@ -3,7 +3,7 @@
   "name": "rubriclensai-api",
   "main": "worker/src/index.ts",
   "compatibility_date": "2026-08-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   // ALERT_WEBHOOK_URL is an optional extra secret, set with
   // `wrangler secret put ALERT_WEBHOOK_URL`. It is where the hourly watch
   // pushes its alert when Gemini stops answering. The watch still writes to

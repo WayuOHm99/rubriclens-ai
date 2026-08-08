@@ -25,9 +25,16 @@
 --------------------------------------------------------------
 """
 
+import shutil
 from pathlib import Path
 
 OUT_DIR = Path(__file__).parent
+RUNTIME_ASSET_DIR = OUT_DIR.parents[2] / "src" / "assets" / "brand"
+RUNTIME_ASSET_NAMES = (
+    "mascot-head.svg",
+    "mascot-thinking.svg",
+    "mascot-offline.svg",
+)
 
 # ค่าสีทั้งหมดต้องตรงกับ tokens.css
 BRAND_600 = "#286096"
@@ -251,7 +258,11 @@ FULL_VIEWBOX, FULL_W, FULL_H = "30 14 224 230", 224, 230
 def build_full(name: str, label: str, note: str, *, face: str, lit: int,
                arms: str = ARMS_ACTIVE, lens: str = LENS_UP, off: bool = False) -> None:
     body = GROUND + arms + BODY + HEAD_SHELL + screen(off) + face + chest(lit, off) + lens
-    (OUT_DIR / name).write_text(wrap(FULL_VIEWBOX, FULL_W, FULL_H, label, body, note), encoding="utf-8")
+    (OUT_DIR / name).write_text(
+        wrap(FULL_VIEWBOX, FULL_W, FULL_H, label, body, note),
+        encoding="utf-8",
+        newline="\n",
+    )
     print(f"  สร้าง {name}")
 
 
@@ -260,7 +271,10 @@ def build_head() -> None:
     body = HEAD_SHELL + screen() + eyes_round()
     note = "หัวมาสคอตอย่างเดียว (ใช้ที่ 20-48 พิกเซล)"
     (OUT_DIR / "mascot-head.svg").write_text(
-        wrap("35 18 140 106", 140, 106, "RubricLensAi", body, note), encoding="utf-8")
+        wrap("35 18 140 106", 140, 106, "RubricLensAi", body, note),
+        encoding="utf-8",
+        newline="\n",
+    )
     print("  สร้าง mascot-head.svg")
 
 
@@ -303,7 +317,7 @@ def build_favicon() -> None:
   <circle cx="19.7" cy="15" r="1.1" fill="{TEAL}"/>
 </svg>
 """
-    (OUT_DIR / "favicon.svg").write_text(svg, encoding="utf-8")
+    (OUT_DIR / "favicon.svg").write_text(svg, encoding="utf-8", newline="\n")
     print("  สร้าง favicon.svg")
 
 
@@ -327,8 +341,19 @@ def build_lockup() -> None:
     # ความกว้าง 348 มาจากการวัดขอบเขตจริงหลังเรนเดอร์ (ตัวอักษรจบที่ 341) แล้วเผื่อไว้เล็กน้อย
     # ถ้าเปลี่ยนขนาดตัวอักษรหรือชื่อแบรนด์ ต้องวัดใหม่ ไม่งั้นตัวท้ายจะถูกตัดหาย
     (OUT_DIR / "mascot-lockup.svg").write_text(
-        wrap("0 0 348 106", 348, 106, "RubricLensAi", body, note), encoding="utf-8")
+        wrap("0 0 348 106", 348, 106, "RubricLensAi", body, note),
+        encoding="utf-8",
+        newline="\n",
+    )
     print("  สร้าง mascot-lockup.svg")
+
+
+def sync_runtime_assets() -> None:
+    """คัดลอกมาสคอตที่เว็บใช้จริงจากไฟล์ generated ชุดเดียวกัน"""
+    RUNTIME_ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    for name in RUNTIME_ASSET_NAMES:
+        shutil.copyfile(OUT_DIR / name, RUNTIME_ASSET_DIR / name)
+        print(f"  คัดลอก {name} ไป src/assets/brand")
 
 
 def main() -> None:
@@ -353,6 +378,7 @@ def main() -> None:
     build_head()
     build_favicon()
     build_lockup()
+    sync_runtime_assets()
 
     print("\nเสร็จแล้ว — อย่าลืมเปิดดูด้วยตาก่อนใช้งาน")
 

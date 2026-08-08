@@ -6,7 +6,33 @@
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**
 
-### รอบล่าสุด — 5 สิงหาคม 2026 รอบสอง (ตัวเฝ้าอัตโนมัติ + ตัวนับคุณภาพภาษา)
+### รอบล่าสุด — 8 สิงหาคม 2026 (Phase 2 + reliability + dependency maintenance, local only)
+
+ผลรอบนี้ตรวจซอร์สและ production-preview ในเครื่องเท่านั้น งานยัง **ไม่ได้ push, merge เข้า remote
+หรือ deploy** จึงไม่ใช่หลักฐานว่า production ใช้โค้ดชุดนี้แล้ว
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| Reproducible install | `npm ci` | **exit code 0** — Node.js `24.18.0`, npm `11.16.0`; installed 593 packages and found 0 vulnerabilities |
+| ทั้งชุด | `npm run verify` | **exit code 0** |
+| Static analysis | `npm run lint` | passed |
+| Unit/component | `npm run test` | **198/198 passed** |
+| Worker bundle and bindings | `npm run worker:check` | passed — dry-run ด้วย `wrangler 4.120.0` |
+| Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities** |
+| Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
+| Production build | `npm run build` | passed |
+| Production-preview E2E | `npm run test:e2e` | **96/96 passed** |
+
+Production audit กับ full-tree audit เป็นคนละหลักฐาน: รายการแรกตัด development dependencies
+(เครื่องมือที่ไม่ถูกส่งไปทำงานกับผู้ใช้) ออก ส่วนรายการหลังตรวจ dependency ทั้งหมดรวมเครื่องมือพัฒนา
+รอบนี้ทั้งสองคำสั่งเป็นศูนย์หลังอัปเดต `wrangler` และ `nanoid` แบบเจาะจง ไม่ได้ใช้
+`npm audit fix` แบบกว้าง รายการ Hono moderate ที่เคยบันทึกไว้ด้านล่างเป็นหลักฐานทางประวัติศาสตร์
+และ **ไม่ใช่สถานะปัจจุบัน**
+
+E2E รันกับ production build ผ่าน `vite preview` ครบ Chromium, Mobile Chrome (Pixel 5), Firefox
+และ WebKit ผลนี้ครอบคลุมโค้ดในเครื่อง แต่ยังไม่แทน production smoke test หรือ TestSprite หลัง deploy
+
+### รอบก่อนหน้า — 5 สิงหาคม 2026 รอบสอง (ตัวเฝ้าอัตโนมัติ + ตัวนับคุณภาพภาษา)
 
 | Layer | Command | Result |
 | --- | --- | --- |

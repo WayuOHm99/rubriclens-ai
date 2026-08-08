@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-115%20unit%20%7C%2072%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-198%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -87,8 +87,8 @@ flowchart LR
 5. The Worker validates the model response, normalizes applicability, and **computes the score in code**.
 6. The browser checks `apiVersion` and schema, recomputes the total to confirm the server agrees, and only then renders.
 
-There is no database, by design. KV holds nothing but rate-limit counters and short-lived (10-minute)
-idempotency records. Full notes, including the *"which files are fragile and why"* table, are in
+There is no database, by design. KV holds operational, cost and quality counters, a short health
+cache, and 10-minute idempotency records. Full notes, including the *"which files are fragile and why"* table, are in
 [docs/architecture.md](docs/architecture.md).
 
 ## Tech stack
@@ -104,24 +104,24 @@ idempotency records. Full notes, including the *"which files are fragile and why
 
 ## Quality gates
 
-`npm run verify` runs exactly what CI runs. Latest local run on this source:
+`npm run verify` runs the same quality gates as CI. Latest local run on this source (8 August 2026):
 
 | Check | Command | Result |
 | --- | --- | ---: |
 | Static analysis | `npm run lint` | passed |
-| Unit + component | `npm run test` | **115 / 115** |
+| Unit + component | `npm run test` | **198 / 198** |
 | Worker bundle and bindings | `npm run worker:check` | passed |
-| Production dependency audit | `npm run audit:prod` | passed — no high/critical<sup>†</sup> |
+| Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities**<sup>†</sup> |
 | Production build | `npm run build` | passed |
-| Cross-browser E2E | `npm run test:e2e` | **72 / 72** |
+| Cross-browser E2E | `npm run test:e2e` | **96 / 96** |
 
 E2E runs against the artefact `npm run build` produced, served by `vite preview` — not a dev server —
 across Chromium, Mobile Chrome (Pixel 5), Firefox and WebKit.
 
-<sup>†</sup> The gate fails on high or critical only. One moderate advisory is currently open —
-a ReDoS in Hono's CORS middleware, reached transitively through `@google/genai` →
-`@modelcontextprotocol/sdk`, a code path this project does not use. It is recorded rather than
-hidden; see [docs/testing-report.md](docs/testing-report.md).
+<sup>†</sup> This gate checks packages shipped to production and fails on high or critical findings.
+A separate full-tree `npm audit`, including development tools, also reported **0 vulnerabilities**
+after explicit `wrangler` and `nanoid` maintenance updates; see
+[docs/testing-report.md](docs/testing-report.md).
 
 The suite covers the failure paths, not just the happy one: idempotency conflicts, v0/v1 cache
 separation, rate limits, CORS, Gemini retry and fallback, two-stage consolidation, token-budget
@@ -132,6 +132,9 @@ presentation.
 > [docs/testing-report.md](docs/testing-report.md), together with an explicit list of what the tests
 > do *not* certify — academic correctness, plagiarism, and agreement with a human grader's judgement
 > are all outside their scope.
+
+> This table records a local verification run. Remote CI and production smoke results are separate
+> evidence and must be recorded only after those checks actually run.
 
 ## Run it locally
 
@@ -156,7 +159,7 @@ npm run worker:dev        # run alongside `npm run dev`
 Never put a Gemini key in `VITE_*`, `.env`, source, or commit history — see [SECURITY.md](SECURITY.md).
 
 ```bash
-npm run verify            # everything CI runs
+npm run verify            # the same quality gates as CI
 npm run test              # fast unit loop
 npm run test:e2e          # rebuild + cross-browser E2E
 npm run screenshots       # regenerate docs/screenshots
@@ -208,8 +211,9 @@ docs/                Architecture, deployment runbook, testing report, screensho
 - The Worker accepts JSON only, caps request bytes before parsing, and validates with Zod first.
 - Report text is never logged, and uploaded files are never stored.
 - Session drafts live in `sessionStorage` for that tab only.
-- KV holds rate-limit counters and 10-minute idempotency records — which may include short evidence
-  excerpts the model quoted, but never the original document or uploaded file.
+- KV holds operational, cost and quality counters, a short health cache, and 10-minute idempotency
+  records. Only idempotency records may include short evidence excerpts the model quoted; none of
+  these records contains the original document or uploaded file.
 - Document text, model findings and rubric content are all treated as untrusted input in every prompt.
 - No cookies, no analytics, no third-party scripts — so the site needs no consent banner. The two
   browser storage keys it does use are declared in `src/lib/browser-storage.ts`, which is the same

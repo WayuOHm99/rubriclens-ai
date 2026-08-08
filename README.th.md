@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-115%20unit%20%7C%2072%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-198%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -85,7 +85,7 @@ flowchart LR
 5. Worker ตรวจ schema ของคำตอบ จัดการกฎ N/A และ **คำนวณคะแนนด้วยโค้ด**
 6. Browser ตรวจ `apiVersion` และ schema แล้วคำนวณคะแนนซ้ำเพื่อยืนยันว่าตรงกับที่ Worker ส่งมา ก่อนแสดงผล
 
-**ไม่มีฐานข้อมูล โดยตั้งใจ** KV เก็บแค่ตัวนับ rate limit กับ idempotency อายุ 10 นาทีเท่านั้น
+**ไม่มีฐานข้อมูล โดยตั้งใจ** KV เก็บตัวนับการใช้งาน/งบ/คุณภาพ, health cache อายุสั้น และผล idempotency อายุ 10 นาที
 รายละเอียดทั้งหมด รวมถึงตาราง *"จุดเปราะ — แก้ตรงไหนแล้วเสี่ยงพังที่อื่น"* อยู่ใน
 [docs/architecture.md](docs/architecture.md)
 
@@ -102,23 +102,23 @@ flowchart LR
 
 ## ด่านคุณภาพ
 
-`npm run verify` รันชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้:
+`npm run verify` รันด่านคุณภาพชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้ (8 สิงหาคม 2026):
 
 | ตรวจอะไร | คำสั่ง | ผล |
 | --- | --- | ---: |
 | ตรวจโค้ดแบบสถิต | `npm run lint` | ผ่าน |
-| Unit + component | `npm run test` | **115 / 115** |
+| Unit + component | `npm run test` | **198 / 198** |
 | Worker bundle และ binding | `npm run worker:check` | ผ่าน |
-| ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | ผ่าน — ไม่มีระดับ high/critical<sup>†</sup> |
+| ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | **ไม่พบช่องโหว่ (0 รายการ)**<sup>†</sup> |
 | Production build | `npm run build` | ผ่าน |
-| E2E ข้ามเบราว์เซอร์ | `npm run test:e2e` | **72 / 72** |
+| E2E ข้ามเบราว์เซอร์ | `npm run test:e2e` | **96 / 96** |
 
 E2E รันบน artefact ที่ `npm run build` สร้าง แล้วเสิร์ฟด้วย `vite preview` (ไม่ใช่ dev server)
 ครอบคลุม Chromium, Mobile Chrome (Pixel 5), Firefox และ WebKit
 
-<sup>†</sup> ด่านนี้จะไม่ผ่านเฉพาะเมื่อเจอระดับ high หรือ critical ตอนนี้มีรายการระดับ moderate ค้างอยู่ 1 รายการ
-คือ ReDoS ใน CORS middleware ของ Hono ซึ่งติดมาทางอ้อมผ่าน `@google/genai` → `@modelcontextprotocol/sdk`
-และเป็นเส้นทางที่โปรเจกต์นี้ไม่ได้ใช้ บันทึกไว้ตรงนี้แทนการซ่อน ดูรายละเอียดใน
+<sup>†</sup> ด่านนี้ตรวจเฉพาะแพ็กเกจที่ส่งไปใช้งานจริง และจะไม่ผ่านเมื่อเจอระดับ high หรือ critical
+ส่วน `npm audit` ที่ตรวจรวมเครื่องมือพัฒนาด้วยก็รายงาน **0 vulnerabilities** หลังอัปเดต
+`wrangler` และ `nanoid` แบบระบุแพ็กเกจชัดเจน รายละเอียดอยู่ใน
 [docs/testing-report.md](docs/testing-report.md)
 
 ชุดทดสอบครอบคลุมเส้นทางที่ระบบพัง ไม่ใช่แค่เส้นทางปกติ: idempotency conflict, การแยก cache v0/v1,
@@ -128,6 +128,9 @@ rate limit, CORS, การ retry และ fallback ของ Gemini, การ
 > ตัวเลขข้างบนเป็นของ **ซอร์สชุดนี้** ส่วนสิ่งที่ deploy อยู่จริงบันทึกแยกไว้ที่
 > [docs/testing-report.md](docs/testing-report.md) พร้อมรายการสิ่งที่การทดสอบ **ไม่ได้** รับรอง เช่น
 > ความถูกต้องเชิงวิชาการ การลอกเลียนผลงาน และความตรงกับดุลพินิจของผู้ประเมินที่เป็นมนุษย์
+
+> ตารางนี้บันทึกผลตรวจในเครื่อง ส่วนผล CI และ production smoke เป็นหลักฐานคนละชุด
+> และต้องบันทึกต่อเมื่อได้รันจริงแล้วเท่านั้น
 
 ## วิธีรันในเครื่อง
 
@@ -152,7 +155,7 @@ npm run worker:dev        # รันคู่กับ npm run dev
 ห้ามใส่ Gemini key ใน `VITE_*`, `.env`, source code หรือ commit history — ดู [SECURITY.md](SECURITY.md)
 
 ```bash
-npm run verify            # ทุกอย่างที่ CI รัน
+npm run verify            # ด่านคุณภาพชุดเดียวกับ CI
 npm run test              # ชุดเร็วระหว่างทำงาน
 npm run test:e2e          # build ใหม่แล้วรัน E2E ข้ามเบราว์เซอร์
 npm run screenshots       # สร้างภาพใน docs/screenshots ใหม่
@@ -202,8 +205,8 @@ docs/                สถาปัตยกรรม, ขั้นตอน de
 - Worker รับ JSON เท่านั้น จำกัดขนาด request ก่อน parse และตรวจด้วย Zod เป็นอย่างแรก
 - ไม่ log เนื้อหารายงาน และไม่เก็บไฟล์ที่อัปโหลด
 - ร่างของผู้ใช้อยู่ใน `sessionStorage` ของแท็บนั้นเท่านั้น
-- KV เก็บแค่ตัวนับ rate limit และผล idempotency อายุ 10 นาที ซึ่งอาจมีข้อความอ้างอิงสั้น ๆ ที่ AI ยกมา
-  แต่ไม่มีเอกสารต้นฉบับหรือไฟล์ที่อัปโหลด
+- KV เก็บตัวนับการใช้งาน/งบ/คุณภาพ, health cache อายุสั้น และผล idempotency อายุ 10 นาที เฉพาะผล
+  idempotency อาจมีข้อความอ้างอิงสั้น ๆ ที่ AI ยกมา แต่ไม่มีข้อมูลใดเก็บเอกสารต้นฉบับหรือไฟล์ที่อัปโหลด
 - ข้อความเอกสาร ผลจากโมเดล และเนื้อหาเกณฑ์ ถูกปฏิบัติเป็น untrusted input ในทุก prompt
 - ไม่มีคุกกี้ ไม่มีระบบเก็บสถิติ ไม่มีสคริปต์จากภายนอก จึงไม่ต้องมีแถบขอความยินยอม ส่วนคีย์ที่เก็บใน
   เบราว์เซอร์ 2 ตัวประกาศไว้ที่ `src/lib/browser-storage.ts` ซึ่งเป็นแหล่งเดียวกับที่หน้านโยบายอ่านไปแสดง

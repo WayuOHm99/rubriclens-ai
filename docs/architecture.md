@@ -19,9 +19,12 @@
 - `src/lib/references.ts` ตรวจ citation/reference ด้วยกฎ deterministic ก่อนส่ง summary ให้ AI
 - `src/lib/rubric.ts` เก็บ templates, schema และ validation ของหัวข้อ/น้ำหนัก
 - `src/lib/analysis.ts` เก็บ response schema, การตรวจ `apiVersion`, mock result และการ format ผลตรวจ
+- `src/lib/analysis-failure.ts` แปลงความล้มเหลวจาก Worker, browser และการตรวจ contract ให้เป็นหมวดที่มีความหมาย (`validation`, `quota`, `compatibility`, `conflict`, `network`, `service`, `unexpected`) โดยแยกหมวดสาเหตุออกจากคำถามว่า “ลองซ้ำแล้วมีโอกาสหายไหม” (`retryable`)
 - `src/lib/site-info.ts` เก็บชื่อเว็บ อีเมลติดต่อ ช่องทางสำรอง ลิขสิทธิ์ สัญญาอนุญาต และ path ของหน้ากฎหมาย ไว้ที่เดียว
 - `src/lib/browser-storage.ts` เก็บ **ชื่อคีย์ทั้งหมดที่ระบบเขียนลงเครื่องผู้ใช้** พร้อมคำอธิบายว่าเก็บไปทำไมและอยู่นานเท่าไร ทั้ง `App.tsx` และหัวข้อคุกกี้ในหน้านโยบายอ่านจากไฟล์นี้ไฟล์เดียว คีย์ชื่อเดิมก่อนเปลี่ยนแบรนด์ถูกทำเครื่องหมาย `isLegacy` เพื่อให้ตารางในนโยบายแสดงเฉพาะของที่ใช้จริง
 - `src/components/SiteFooter.tsx` เป็นท้ายเว็บร่วมของทุกหน้า เหลือเฉพาะลิขสิทธิ์แบรนด์และลิงก์สามทาง (นโยบาย, ข้อกำหนด, ซอร์สโค้ด)
+- `src/index.css` เป็นสะพานระหว่าง token แบรนด์ชื่อ `--rl-*` กับ token เชิงความหมายของ shadcn/Tailwind เช่น `--primary`, `--background` และ `--muted` ทำให้ชิ้นส่วน UI ใช้สีแบรนด์โดยไม่ผูกกับชื่อสีเฉพาะ
+- `src/assets/brand/` เก็บ SVG มาสคอตที่ Vite นำเข้าและตั้งชื่อไฟล์ตาม hash ตอน build ไฟล์เหล่านี้เป็น **สำเนาที่สร้างอัตโนมัติ** จาก `docs/brand/logo/build-mascots.py` ไม่ใช่แหล่งต้นฉบับสำหรับแก้ด้วยมือ
 
 ### Static pages (`src/pages/`)
 
@@ -50,6 +53,7 @@
 - ใช้ anonymous token + client IP ที่ hash แล้วสำหรับ cost-abuse guard
 - ใช้ KV เก็บ counters และ successful idempotency response แบบ TTL สั้น
 - เรียก model หลักและ fallback เมื่อ quota/model availability มีปัญหา
+- ครอบการวิเคราะห์หนึ่งคำขอด้วยเพดานรวม 100 วินาที, จำกัด `countTokens` ครั้งละ 10 วินาที และ model request ครั้งละ 60 วินาที โดยใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation ทุกเส้นทาง
 - ตรวจ AI response ด้วย schema **และคำนวณ overall score ด้วยโค้ดฝั่ง Worker**
 
 ## Where the score is calculated
@@ -74,10 +78,11 @@ User input
   -> Worker validation (schema first)
   -> idempotency digest check
   -> rate limit + daily budget
-  -> Gemini structured response (chunk pass, then consolidation pass เมื่อเอกสารยาว)
+  -> bounded Gemini structured response (chunk pass, then consolidation pass เมื่อเอกสารยาว)
   -> Worker schema validation + applicability normalization
   -> Worker score calculation
   -> browser contract/version validation
+  -> browser failure classification เมื่อเส้นทางใดล้มเหลว
   -> explainable result cards
 ```
 
@@ -189,9 +194,33 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 ไฟล์ PDF ถูกจำกัดทั้งขนาด (10 MB) และจำนวนหน้า (400 หน้า) เพราะไฟล์เล็กมากก็สามารถมีหลายพันหน้าได้ และการ extract ทำงานหน้าละหนึ่งรอบบน main thread ระบบตรวจจำนวนหน้าทันทีหลังเปิดเอกสารก่อนเริ่ม loop และยังคืน loading task เสมอผ่าน `finally`
 
+### Bounded model waiting
+
+การยกเลิกหรือหมดเวลาที่ browser ไม่ได้รับประกันว่า Gemini ฝั่งผู้ให้บริการจะหยุดประมวลผลและหยุดคิดค่าใช้จ่ายทันที Worker จึงไม่พึ่ง browser timeout เพียงชั้นเดียว:
+
+- `wrangler.jsonc` เปิด `enable_request_signal` เพื่อส่งสัญญาณยกเลิกจาก request เข้า Worker
+- Worker รวมสัญญาณของ request กับเพดานวิเคราะห์รวม 100 วินาที แล้วส่งสัญญาณเดียวกันให้ทุก `countTokens` และ `generateContent`
+- `countTokens` มีเพดานย่อย 10 วินาที และ model request มีเพดานย่อย 60 วินาที; retry และ fallback ใช้เวลาจากเพดานรวมเดียวกัน ไม่ได้เริ่มนาฬิกาใหม่
+- ถ้าผู้ใช้ยกเลิก ระบบคืน `REQUEST_CANCELLED`; ถ้าชนเพดานรวม ระบบคืน `GEMINI_TIMEOUT` และไม่เริ่ม fallback เพิ่มหลัง deadline
+
+ข้อจำกัดที่ยังมีโดยธรรมชาติของ API คือการ abort เป็นการหยุดรอฝั่ง client/Worker; งานที่ผู้ให้บริการรับไปแล้วอาจทำต่อและคิดโควตาได้ จึงต้องคง budget ledger และการเฝ้าดูค่าใช้จ่ายไว้ด้วย ไม่ควรอ้างว่า abort เท่ากับยกเลิก billing
+
+### Brand asset flow and mascot semantics
+
+แหล่งความจริงของมาสคอตคือ `docs/brand/logo/build-mascots.py` เมื่อรันแล้วจะสร้างชุด SVG เอกสารใน `docs/brand/logo/`, คัดลอกสามสถานะที่เว็บใช้ไป `src/assets/brand/` และคัดลอก favicon ไป `public/favicon.svg` ส่วน `docs/brand/og/render-og.py` สร้างภาพแชร์และคัดลอกผลไป `public/og.png` หลัง render สำเร็จ
+
+เว็บใช้มาสคอตตามความหมายของ state เท่านั้น:
+
+- หัวมาสคอต: ส่วนหัวของหน้าเริ่มต้น/เตรียมข้อมูล และ error ที่ไม่ใช่ system failure (ยังเป็น product identity ไม่ใช่ภาพบอกว่าระบบล่ม)
+- มาสคอตกำลังคิด: ระหว่าง `analyzing`
+- มาสคอตออฟไลน์: เฉพาะความล้มเหลวหมวด `network`, `service` หรือ `unexpected`
+- หน้าผลคะแนน: ไม่มีมาสคอต และไม่มี state “เสร็จแล้ว” ชั่วคราวที่สร้างขึ้นเพื่อโชว์ภาพ
+
+validation, quota, compatibility และ idempotency conflict ยังมีข้อความกับทางแก้ที่ตรงสาเหตุ แต่ไม่ใช้มาสคอตออฟไลน์ เพราะระบบอาจทำงานถูกต้องอยู่
+
 ### Failure-aware API
 
-ระบบรองรับ malformed JSON, schema mismatch, transient model failure, timeout, cancel, retry, idempotency conflict, consolidation failure และ API version mismatch เพื่อป้องกัน double submission และผลลัพธ์ที่แสดงไม่ครบ
+ระบบรองรับ malformed JSON, schema mismatch, transient model failure, timeout, cancel, retry, idempotency conflict, consolidation failure และ API version mismatch เพื่อป้องกัน double submission และผลลัพธ์ที่แสดงไม่ครบ ฝั่ง browser จัดหมวดด้วย error code/status ที่บอกความหมาย ไม่ใช้ `retryable` เป็นตัวแทนว่า “ระบบพัง” เพราะ quota อาจลองใหม่ได้แต่ไม่ใช่ outage ขณะที่ config ของบริการอาจเป็น system failure ที่ลองซ้ำเองไม่หาย
 
 ## จุดเปราะ — แก้ตรงไหนแล้วเสี่ยงพังที่อื่น
 
@@ -201,11 +230,11 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 | --- | --- | --- | --- |
 | 1 | `shared/scoring.ts` (~42 บรรทัด) | สูตรคะแนนชุดเดียวที่ Worker และ browser ใช้ร่วมกัน และ browser ยังคำนวณซ้ำเพื่อ **ตรวจทาน** ผลจาก Worker แก้ที่นี่ = ทั้งสองฝั่งเปลี่ยนพร้อมกัน จึงตรวจกันเองไม่เจอ | คะแนนผิดโดยไม่มี error ผู้ใช้ไม่มีทางรู้ |
 | 2 | `shared/api-contract.ts` (~44 บรรทัด) | `API_VERSION` ผูกสามที่: browser ที่ปฏิเสธเวอร์ชันแปลกปลอม, Worker ที่ประทับเวอร์ชัน และ key ของ idempotency cache ที่แยกตามเวอร์ชัน | ผู้ใช้เจอ "กรุณารีเฟรช" ตลอด หรือได้ผลเก่าจาก cache ข้ามเวอร์ชัน |
-| 3 | `worker/src/index.ts` (~660 บรรทัด) | ไฟล์ใหญ่ที่สุดของโปรเจกต์ และ **ลำดับการทำงานมีความหมาย**: ต้อง validate → เช็ค idempotency → กันงบ → ค่อยเรียก model สลับลำดับแล้ว request ขยะจะแตะ KV หรือเผางบได้ | ค่าใช้จ่ายบานปลาย หรือ cache ปนเปื้อน |
+| 3 | `worker/src/index.ts` (~900 บรรทัด) | ไฟล์ใหญ่ที่สุดของโปรเจกต์ และ **ลำดับการทำงานมีความหมาย**: ต้อง validate → เช็ค idempotency → กันงบ → ค่อยเรียก model สลับลำดับแล้ว request ขยะจะแตะ KV หรือเผางบได้ | ค่าใช้จ่ายบานปลาย หรือ cache ปนเปื้อน |
 | 4 | กฎ N/A (`applicability`) กระจาย 3 ที่ | นิยามอยู่ `shared/api-contract.ts`, Worker เป็นคนล้าง `evidence`/`score` ของหัวข้อ N/A, แล้ว `src/lib/analysis.ts` เป็นคนปฏิเสธ N/A ที่ยังมีคะแนนติดมา แก้ที่เดียวไม่พอ | หลักฐานที่โมเดลกุขึ้นมาหลุดเข้าผลลัพธ์ หรือคะแนนรวมเพี้ยนเพราะตัวหารผิด |
-| 5 | `worker/src/prompt.ts` (~246 บรรทัด) | ข้อความ prompt เป็น "สัญญา" กับ `ANALYSIS_RESPONSE_JSON_SCHEMA` แก้ถ้อยคำแล้วลืมแก้ schema (หรือกลับกัน) โมเดลจะตอบผิดรูป | ผู้ใช้เจอ "ผลลัพธ์ AI ไม่อยู่ในรูปแบบที่ระบบรองรับ" |
+| 5 | `worker/src/prompt.ts` (~250 บรรทัด) | ข้อความ prompt เป็น "สัญญา" กับ `ANALYSIS_RESPONSE_JSON_SCHEMA` แก้ถ้อยคำแล้วลืมแก้ schema (หรือกลับกัน) โมเดลจะตอบผิดรูป | ผู้ใช้เจอ "ผลลัพธ์ AI ไม่อยู่ในรูปแบบที่ระบบรองรับ" |
 | 6 | `wrangler.jsonc` | ค่าใน `vars` ถูกเขียนทับได้จากหน้าเว็บ Cloudflare dashboard ซึ่งไม่ทิ้งร่องรอยใน git — **เคยพังมาแล้วจริง** (ดู `LESSONS.md` บทที่ 1) | เว็บเรียก API ไม่ได้ ขึ้น `Failed to fetch` ที่ไม่บอกสาเหตุ |
-| 7 | `src/App.tsx` (~700 บรรทัด) | workflow ทั้งหมดอยู่ไฟล์เดียว ตั้งแต่รับไฟล์ แก้ rubric ไปจนถึงแสดงผล state หลายตัวผูกกัน แต่มี `App.test.tsx` (~458 บรรทัด) คุมอยู่พอควร | UI ค้างที่ขั้นตอนใดขั้นตอนหนึ่ง |
+| 7 | `src/App.tsx` (~800 บรรทัด) | workflow ทั้งหมดอยู่ไฟล์เดียว ตั้งแต่รับไฟล์ แก้ rubric ไปจนถึงแสดงผล state หลายตัวผูกกัน แต่มี `App.test.tsx` (~550 บรรทัด) คุมอยู่พอควร | UI ค้างที่ขั้นตอนใดขั้นตอนหนึ่ง |
 | 8 | `src/lib/pdf.ts` (~128 บรรทัด) | extract ทีละหน้าบน main thread (เธรดเดียวกับที่วาดหน้าจอ) ด่านกันขนาด 10 MB และ 400 หน้าคือสิ่งเดียวที่กันเบราว์เซอร์ค้าง | แท็บค้างไปเลย กดอะไรไม่ได้ |
 | 9 | เนื้อหาหน้ากฎหมาย (`src/pages/PrivacyPolicy.tsx`, `TermsOfService.tsx`) | เป็นคำประกาศต่อสาธารณะว่าระบบทำอะไรกับข้อมูลผู้ใช้ ถ้าโค้ดฝั่ง Worker เปลี่ยน (TTL, ขีดจำกัด, ปลายทางที่ส่งข้อมูลไป) แล้วไม่แก้หน้านี้ เอกสารจะกลายเป็นคำประกาศเท็จโดยไม่มีอะไรเตือน ส่วนชื่อคีย์ที่เก็บบนเครื่องผู้ใช้และตัวเลขขีดจำกัดมีเทสต์คุมไว้แล้ว | ไม่เห็นเลยจนกว่าจะมีคนทักท้วง |
 | 10 | `CONTACT_EMAIL` ใน `src/lib/site-info.ts` | เป็นช่องทางติดต่อตามกฎหมายที่ประกาศไว้ทั้งสองหน้า ถ้าอีเมลนี้รับเมลไม่ได้จริง (โดเมนยังไม่ต่อ DNS หรือยังไม่ตั้ง email routing) ผู้ใช้จะส่งแล้วเด้งกลับโดยเราไม่รู้ | เงียบสนิท ไม่มีใครแจ้งได้ว่าติดต่อไม่ได้ |

@@ -14,6 +14,7 @@
 | Layer | Command | Result |
 | --- | --- | --- |
 | Reproducible install | `npm ci` | **exit code 0** — Node.js `24.18.0`, npm `11.16.0`; installed 593 packages and found 0 vulnerabilities |
+| Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | no unreviewed scripts — four required scripts are approved at their exact installed versions |
 | ทั้งชุด | `npm run verify` | **exit code 0** |
 | Static analysis | `npm run lint` | passed |
 | Unit/component | `npm run test` | **198/198 passed** |

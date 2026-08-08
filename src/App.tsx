@@ -460,7 +460,7 @@ function App() {
         setState('ready')
         setAnalysisNotice(abortReasonRef.current === 'timeout'
           ? {
-              message: 'การตรวจใช้เวลานานเกิน 2 นาที คุณสามารถลองอีกครั้งด้วยคำขอเดิมได้',
+              message: 'การตรวจใช้เวลานานเกิน 2 นาที โปรดรอสักครู่ก่อนลองอีกครั้งด้วยคำขอเดิม เพื่อลดโอกาสเกิดการตรวจซ้ำ',
               canRetry: true,
               category: 'network',
             }

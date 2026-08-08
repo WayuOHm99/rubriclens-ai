@@ -422,7 +422,7 @@ function exhaustedGeminiFailure(error: unknown) {
 
 function stoppedModelCallFailure(control: ModelCallControl) {
   if (control.requestSignal.aborted) return new ApiFailure('REQUEST_CANCELLED', 'คำขอตรวจถูกยกเลิกแล้ว', 499)
-  return new ApiFailure('GEMINI_TIMEOUT', 'ระบบ AI ใช้เวลาตอบนานเกินกำหนด โปรดลองใหม่อีกครั้ง', 504, true)
+  return new ApiFailure('GEMINI_TIMEOUT', 'ระบบ AI ใช้เวลาตอบนานเกินกำหนด โปรดรอสักครู่ก่อนลองใหม่ เพื่อลดโอกาสเกิดการตรวจซ้ำ', 504, true)
 }
 
 function ensureModelCallIsActive(control: ModelCallControl) {

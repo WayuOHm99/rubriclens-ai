@@ -29,6 +29,10 @@ function stubApi(payload: unknown, status = 200) {
 
 const longEnoughReport = 'บทนำ เนื้อหารายงานสำหรับทดสอบเส้นทางการเรียก API ให้ครบถ้วนพอสมควร'
 
+function queryMascot(kind?: 'brand' | 'thinking' | 'offline') {
+  return document.querySelector(kind ? `[data-mascot="${kind}"]` : '[data-mascot]')
+}
+
 vi.mock('./lib/pdf', () => ({ extractPdfText: vi.fn() }))
 
 describe('App', () => {
@@ -59,6 +63,20 @@ describe('App', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
+  })
+
+  it('shows mascots only before and during analysis, never with a score result', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(queryMascot('brand')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับตรวจลำดับการแสดงมาสคอต')
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(queryMascot('brand')).not.toBeInTheDocument()
+    expect(queryMascot('thinking')).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
+    expect(queryMascot()).not.toBeInTheDocument()
   })
 
   it('extracts a selected PDF into preview text', async () => {
@@ -251,7 +269,49 @@ describe('App', () => {
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ เนื้อหารายงานสำหรับทดสอบผลตอบกลับที่มีข้อมูลไม่ครบถ้วนจากระบบภายนอก')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByText(/ผลตอบกลับจากระบบยังไม่ครบถ้วน/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'ผลวิเคราะห์' })).not.toBeInTheDocument()
+  })
+
+  it('shows a safe system-failure message and offline mascot when the network request fails', async () => {
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'false')
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch https://internal.example/api-key')))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText(/ไม่สามารถเชื่อมต่อระบบตรวจเอกสารได้/)).toBeInTheDocument()
+    expect(screen.queryByText(/internal\.example|api-key/)).not.toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeInTheDocument()
+  })
+
+  it('does not treat a retryable request limit as a system outage', async () => {
+    stubApi({ error: 'ส่งคำขอครบขีดจำกัดชั่วคราวแล้ว โปรดลองอีกครั้งภายหลัง', code: 'RATE_LIMITED', retryable: true }, 429)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText(/ส่งคำขอครบขีดจำกัดชั่วคราวแล้ว/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeInTheDocument()
+  })
+
+  it('shows a system mascot for a non-retryable service configuration failure', async () => {
+    stubApi({ error: 'ระบบ AI ยังตั้งค่าไม่สมบูรณ์', code: 'AI_CONFIGURATION', retryable: false }, 503)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText(/ระบบ AI ยังตั้งค่าไม่สมบูรณ์/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
   })
 
   it('shows an exhausted daily quota clearly without an ineffective retry button', async () => {
@@ -266,6 +326,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     expect(await screen.findByText(/โควตารายวันของ Gemini ทั้งโมเดลหลักและโมเดลสำรองครบแล้ว/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
   })
 
@@ -325,6 +386,7 @@ describe('App', () => {
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับทดสอบ timeout โดยไม่ส่งข้อมูลไปยัง Gemini จริง')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByText(/การตรวจใช้เวลานานเกิน 2 นาที/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeInTheDocument()
   })
 
@@ -406,6 +468,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     expect(await screen.findByText(/เป็นคนละรุ่นกับหน้าเว็บนี้/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'ผลวิเคราะห์' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
   })

@@ -12,12 +12,16 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import { SiteFooter } from '@/components/SiteFooter'
+import brandMascotUrl from '@/assets/brand/mascot-head.svg'
+import offlineMascotUrl from '@/assets/brand/mascot-offline.svg'
+import thinkingMascotUrl from '@/assets/brand/mascot-thinking.svg'
 // ชื่อคีย์ที่เก็บบนเครื่องผู้ใช้อยู่ในไฟล์เดียวกับที่หน้านโยบายคุกกี้อ่านไปแสดง
 // เปลี่ยนชื่อคีย์ที่นั่นที่เดียว แล้วโค้ดกับนโยบายจะตรงกันเสมอ
 import { ANONYMOUS_TOKEN_KEY, LEGACY_ANONYMOUS_TOKEN_KEY, LEGACY_SESSION_DRAFT_KEY, SESSION_DRAFT_KEY } from '@/lib/browser-storage'
 import { PRIVACY_POLICY_PATH } from '@/lib/site-info'
 import { API_VERSION, API_VERSION_HEADER } from '../shared/api-contract'
 import { createMockAnalysis, formatAnalysisResult, formatOverallScore, isNotApplicable, NOT_APPLICABLE_BADGE, parseAnalysisResponse, type AnalysisResult } from './lib/analysis'
+import { analysisErrorFromNetworkFailure, analysisErrorFromParseFailure, analysisErrorFromWorkerResponse, normalizeUnexpectedAnalysisError, shouldShowOfflineMascot, type AnalysisFailureCategory } from './lib/analysis-failure'
 import { isLikelyPdf, MAX_ANALYSIS_CHARS, MAX_FILE_BYTES, MAX_RAW_CHARS, PDF_LIMITS_LABEL, prepareDocument } from './lib/document'
 import { extractPdfText } from './lib/pdf'
 import { analyzeReferences } from './lib/references'
@@ -63,11 +67,27 @@ type Draft = {
   rubric: RubricSection[]
 }
 
+type AnalysisNotice = {
+  message: string
+  canRetry: boolean
+  category?: AnalysisFailureCategory
+}
+
 export type AnalysisState = 'idle' | 'input' | 'preview' | 'editing' | 'ready' | 'analyzing' | 'result' | 'error'
 
 const stateLabels: Record<AnalysisState, string> = {
   idle: 'พร้อมเริ่ม', input: 'กำลังเตรียมเอกสาร', preview: 'กำลังตรวจตัวอย่าง', editing: 'กำลังแก้ไข',
   ready: 'พร้อมส่งตรวจ', analyzing: 'AI กำลังตรวจ', result: 'ตรวจเสร็จแล้ว', error: 'ต้องตรวจข้อมูลอีกครั้ง',
+}
+
+const failureStateLabels: Record<AnalysisFailureCategory, string> = {
+  validation: 'ต้องตรวจข้อมูลอีกครั้ง',
+  quota: 'ถึงขีดจำกัดการใช้งาน',
+  compatibility: 'หน้าเว็บกับระบบไม่ตรงรุ่น',
+  conflict: 'คำขอเดิมใช้ต่อไม่ได้',
+  network: 'เชื่อมต่อระบบไม่ได้',
+  service: 'ระบบตรวจยังไม่พร้อม',
+  unexpected: 'หน้าเว็บขัดข้อง',
 }
 
 const analysisSteps = ['ตรวจขนาดเอกสาร', 'เตรียมเกณฑ์การตรวจ', 'ส่งข้อมูลผ่านระบบที่ปลอดภัย', 'AI อ่านเอกสาร', 'ตรวจความครบถ้วนของคำตอบ', 'รวมผลแต่ละหัวข้อ', 'คำนวณคะแนนรวม']
@@ -133,8 +153,7 @@ function App() {
   const [pdfProgress, setPdfProgress] = useState<{ completed: number; total: number } | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [progressIndex, setProgressIndex] = useState(0)
-  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null)
-  const [analysisCanRetry, setAnalysisCanRetry] = useState(false)
+  const [analysisNotice, setAnalysisNotice] = useState<AnalysisNotice | null>(null)
   const [resultActionMessage, setResultActionMessage] = useState<string | null>(null)
   const [anonymousToken] = useState(getAnonymousToken)
   const [documentType, setDocumentType] = useState<DocumentType>(initialDraft.documentType)
@@ -180,6 +199,27 @@ function App() {
       .flatMap((section) => section.missing.map((missing) => ({ section: section.title, missing, recommendation: section.recommendation })))
       .slice(0, 6)
   }, [result])
+  const showOfflineMascot = analysisNotice?.category
+    ? shouldShowOfflineMascot(analysisNotice.category)
+    : false
+  const showHeaderMascot = state !== 'result' && state !== 'analyzing' && !showOfflineMascot
+  const currentStateLabel = analysisNotice?.category
+    ? failureStateLabels[analysisNotice.category]
+    : stateLabels[state]
+  const analysisNoticeClassName = analysisNotice?.category === 'quota'
+    ? 'border-amber-200 bg-amber-50 text-amber-950'
+    : showOfflineMascot || analysisNotice?.category === 'validation'
+      ? 'border-danger-border bg-danger-soft text-danger-foreground'
+      : analysisNotice?.category === 'compatibility' || analysisNotice?.category === 'conflict'
+        ? 'border-primary/20 bg-brand-soft text-brand-soft-foreground'
+        : 'border-sky-200 bg-sky-50 text-sky-950'
+  const analysisNoticeTitle = analysisNotice?.category === 'quota'
+    ? 'ถึงขีดจำกัดการใช้งาน'
+    : showOfflineMascot
+      ? 'ระบบยังตรวจเอกสารไม่ได้'
+      : state === 'error'
+        ? 'ยังตรวจเอกสารไม่ได้'
+        : 'สถานะการตรวจ'
 
   useEffect(() => () => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
@@ -226,7 +266,7 @@ function App() {
   const markContentChanged = (nextText: string) => {
     if (state !== 'analyzing') setState(nextText.trim() ? 'input' : 'idle')
     setResult(null)
-    setAnalysisMessage(null)
+    setAnalysisNotice(null)
     setResultActionMessage(null)
     setAppendixConfirmed(false)
     idempotencyKeyRef.current = null
@@ -235,7 +275,7 @@ function App() {
   const markRubricChanged = (nextRubric: RubricSection[]) => {
     setRubric(nextRubric)
     setResult(null)
-    setAnalysisMessage(null)
+    setAnalysisNotice(null)
     idempotencyKeyRef.current = null
     if (state === 'result') setState('ready')
   }
@@ -243,6 +283,7 @@ function App() {
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     setFileNotice(null)
+    setAnalysisNotice(null)
     setWarnings([])
     if (!file) return
 
@@ -304,16 +345,22 @@ function App() {
     const valid = await trigger('reportText')
     if (!valid || !preparedDocument.mainText.trim() || exceedsAnalysisLimit || exceedsRawLimit) {
       setState('error')
-      setAnalysisMessage(!preparedDocument.mainText.trim() ? 'กรุณาเพิ่มเนื้อหาเอกสารหลักก่อนเริ่มตรวจ' : 'เนื้อหาเอกสารยังยาวเกินขนาดที่รองรับ ระบบยังไม่ได้ตัดหรือส่งข้อความส่วนใด')
-      setAnalysisCanRetry(false)
+      setAnalysisNotice({
+        message: !preparedDocument.mainText.trim() ? 'กรุณาเพิ่มเนื้อหาเอกสารหลักก่อนเริ่มตรวจ' : 'เนื้อหาเอกสารยังยาวเกินขนาดที่รองรับ ระบบยังไม่ได้ตัดหรือส่งข้อความส่วนใด',
+        canRetry: false,
+        category: 'validation',
+      })
       analysisInFlightRef.current = false
       return
     }
 
     if (!rubricValidation.success) {
       setState('error')
-      setAnalysisMessage('เกณฑ์การตรวจยังไม่พร้อม โปรดแก้ไขหัวข้อหรือน้ำหนักก่อนเริ่มตรวจ')
-      setAnalysisCanRetry(false)
+      setAnalysisNotice({
+        message: 'เกณฑ์การตรวจยังไม่พร้อม โปรดแก้ไขหัวข้อหรือน้ำหนักก่อนเริ่มตรวจ',
+        canRetry: false,
+        category: 'validation',
+      })
       analysisInFlightRef.current = false
       return
     }
@@ -321,8 +368,7 @@ function App() {
     const excludeAppendix = appendixIsConfirmed
     if (preparedDocument.appendixHeading && !excludeAppendix) {
       setAppendixConfirmationOpen(true)
-      setAnalysisMessage(null)
-      setAnalysisCanRetry(false)
+      setAnalysisNotice(null)
       analysisInFlightRef.current = false
       return
     }
@@ -335,8 +381,7 @@ function App() {
     abortReasonRef.current = null
     setState('analyzing')
     setResult(null)
-    setAnalysisMessage(null)
-    setAnalysisCanRetry(false)
+    setAnalysisNotice(null)
     setResultActionMessage(null)
     setProgressIndex(0)
     progressTimerRef.current = window.setInterval(() => setProgressIndex((current) => Math.min(current + 1, analysisSteps.length - 2)), 1_500)
@@ -355,19 +400,31 @@ function App() {
       } else {
         const baseUrl = getApiBaseUrl()
         idempotencyKeyRef.current ??= crypto.randomUUID()
-        const response = await fetch(`${baseUrl}/analyze`, {
-          method: 'POST', signal: controller.signal,
-          headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKeyRef.current, [API_VERSION_HEADER]: String(API_VERSION) },
-          body: JSON.stringify({
-            reportText: text,
-            documentType,
-            anonymousToken,
-            rubric: { version: rubricVersion, sections: rubric },
-            referenceSummary: referenceSummary.aiSummary,
-            documentOptions: { excludeAppendix: Boolean(preparedDocument.appendixHeading && excludeAppendix) },
-          }),
-        })
-        const rawPayload = await response.text()
+        let response: Response
+        try {
+          response = await fetch(`${baseUrl}/analyze`, {
+            method: 'POST', signal: controller.signal,
+            headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKeyRef.current, [API_VERSION_HEADER]: String(API_VERSION) },
+            body: JSON.stringify({
+              reportText: text,
+              documentType,
+              anonymousToken,
+              rubric: { version: rubricVersion, sections: rubric },
+              referenceSummary: referenceSummary.aiSummary,
+              documentOptions: { excludeAppendix: Boolean(preparedDocument.appendixHeading && excludeAppendix) },
+            }),
+          })
+        } catch (error) {
+          if (controller.signal.aborted) throw error
+          throw analysisErrorFromNetworkFailure(error)
+        }
+        let rawPayload: string
+        try {
+          rawPayload = await response.text()
+        } catch (error) {
+          if (controller.signal.aborted) throw error
+          throw analysisErrorFromNetworkFailure(error)
+        }
         let payload: unknown
         try { payload = JSON.parse(rawPayload) as unknown } catch { payload = undefined }
         const parsedError = apiErrorSchema.safeParse(payload)
@@ -375,16 +432,11 @@ function App() {
           // The stored request no longer matches this key, so retrying with it
           // would only conflict again. Drop it and let the next attempt mint one.
           if (parsedError.success && parsedError.data.code === 'IDEMPOTENCY_CONFLICT') idempotencyKeyRef.current = null
-          const message = parsedError.success ? parsedError.data.error : 'ระบบตอบกลับในรูปแบบที่อ่านไม่ได้ โปรดลองใหม่ภายหลัง'
-          const error = new Error(message) as Error & { retryable?: boolean }
-          error.retryable = parsedError.success ? (parsedError.data.retryable ?? response.status >= 500) : response.status >= 500
-          throw error
+          throw analysisErrorFromWorkerResponse(parsedError.success ? parsedError.data : undefined, response.status)
         }
         const parsedResult = parseAnalysisResponse(payload, { documentType, rubricVersion, sections: rubric })
         if (!parsedResult.ok) {
-          const error = new Error(parsedResult.message) as Error & { retryable?: boolean }
-          error.retryable = parsedResult.retryable
-          throw error
+          throw analysisErrorFromParseFailure(parsedResult)
         }
         setResult(parsedResult.result)
       }
@@ -393,14 +445,24 @@ function App() {
     } catch (error) {
       if (controller.signal.aborted) {
         setState('ready')
-        setAnalysisCanRetry(abortReasonRef.current === 'timeout')
-        setAnalysisMessage(abortReasonRef.current === 'timeout'
-          ? 'การตรวจใช้เวลานานเกิน 2 นาที คุณสามารถลองอีกครั้งด้วยคำขอเดิมได้'
-          : 'ยกเลิกการตรวจแล้ว หาก Worker ทำงานเสร็จภายหลัง การลองอีกครั้งจะใช้คำขอเดิมเพื่อลดการตรวจซ้ำ')
+        setAnalysisNotice(abortReasonRef.current === 'timeout'
+          ? {
+              message: 'การตรวจใช้เวลานานเกิน 2 นาที คุณสามารถลองอีกครั้งด้วยคำขอเดิมได้',
+              canRetry: true,
+              category: 'network',
+            }
+          : {
+              message: 'ยกเลิกการตรวจแล้ว ระบบส่งคำสั่งหยุดไปยัง Worker แล้ว หากข้อมูลเริ่มถูกส่งไป Google ผู้ให้บริการอาจยังประมวลผลคำขอนั้นอยู่ โปรดรอสักครู่ก่อนเริ่มใหม่เพื่อลดการใช้โควตาซ้ำ',
+              canRetry: false,
+            })
       } else {
+        const failure = normalizeUnexpectedAnalysisError(error)
         setState('error')
-        setAnalysisCanRetry(Boolean((error as Error & { retryable?: boolean }).retryable))
-        setAnalysisMessage(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด โปรดลองใหม่อีกครั้ง')
+        setAnalysisNotice({
+          message: failure.message,
+          canRetry: failure.retryable,
+          category: failure.category,
+        })
       }
     } finally {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
@@ -463,7 +525,7 @@ function App() {
     setFileNotice(null)
     setWarnings([])
     setAppendixConfirmed(false)
-    setAnalysisMessage(null)
+    setAnalysisNotice(null)
     setResultActionMessage(null)
     idempotencyKeyRef.current = null
     removeStoredDraft()
@@ -503,8 +565,10 @@ function App() {
   const cancelAppendixConfirmation = () => {
     setAppendixConfirmationOpen(false)
     setState('input')
-    setAnalysisMessage('ยังไม่ได้ส่งเอกสาร คุณสามารถแก้ข้อความหรือกดตรวจอีกครั้งได้')
-    setAnalysisCanRetry(false)
+    setAnalysisNotice({
+      message: 'ยังไม่ได้ส่งเอกสาร คุณสามารถแก้ข้อความหรือกดตรวจอีกครั้งได้',
+      canRetry: false,
+    })
     window.requestAnimationFrame(() => editorRef.current?.focus())
   }
 
@@ -551,12 +615,15 @@ function App() {
     <main className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
         <header className="mb-5 flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">RubricLensAi</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7"><span className="font-medium text-foreground">ตรวจเอกสารให้ครบ ชัด และตรงเกณฑ์</span> — รองรับรายงานทั่วไป โครงงาน และรายงานวิจัย</p>
+          <div className="flex min-w-0 items-center gap-3">
+            {showHeaderMascot && <img data-mascot="brand" src={brandMascotUrl} alt="" className="h-12 w-auto shrink-0 sm:h-14" />}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">RubricLensAi</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7"><span className="font-medium text-foreground">ตรวจเอกสารให้ครบ ชัด และตรงเกณฑ์</span> — รองรับรายงานทั่วไป โครงงาน และรายงานวิจัย</p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="w-fit" aria-live="polite">สถานะ: {stateLabels[state]}</Badge>
+            <Badge variant="outline" className="w-fit" aria-live="polite">สถานะ: {currentStateLabel}</Badge>
             {text.trim() && <Button type="button" size="sm" variant="ghost" onClick={clearDraft} disabled={controlsLocked}><RotateCcw />เริ่มใหม่</Button>}
           </div>
         </header>
@@ -652,9 +719,34 @@ function App() {
           </CardContent>
         </Card>
 
-        {state === 'analyzing' && <section ref={analyzingRef} tabIndex={-1} className="mt-5 scroll-mt-4 outline-none" aria-label="กำลังตรวจเอกสาร" aria-live="polite"><Card><CardHeader><CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />กำลังตรวจเอกสาร</CardTitle><CardDescription>รายการด้านล่างเป็นความคืบหน้าโดยประมาณ เอกสารยาวอาจใช้เวลาถึง 2 นาที</CardDescription></CardHeader><CardContent className="space-y-4"><Progress value={((progressIndex + 1) / analysisSteps.length) * 100} /><ol className="space-y-2 text-sm">{analysisSteps.map((step, index) => <li key={step} className={index < progressIndex ? 'text-success-foreground' : index === progressIndex ? 'font-medium text-primary' : 'text-muted-foreground'}>{index < progressIndex ? '✓' : index === progressIndex ? '•' : '○'} {step}</li>)}</ol><Button variant="outline" onClick={cancelAnalysis}>ยกเลิกการตรวจ</Button></CardContent></Card></section>}
+        {state === 'analyzing' && <section ref={analyzingRef} tabIndex={-1} className="mt-5 scroll-mt-4 outline-none" aria-label="กำลังตรวจเอกสาร" aria-live="polite">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />กำลังตรวจเอกสาร</CardTitle>
+              <CardDescription>รายการด้านล่างเป็นความคืบหน้าโดยประมาณ เอกสารยาวอาจใช้เวลาถึง 2 นาที</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
+              <img data-mascot="thinking" src={thinkingMascotUrl} alt="" className="mx-auto h-36 w-auto sm:h-40" />
+              <div className="space-y-4">
+                <Progress value={((progressIndex + 1) / analysisSteps.length) * 100} />
+                <ol className="space-y-2 text-sm">{analysisSteps.map((step, index) => <li key={step} className={index < progressIndex ? 'text-success-foreground' : index === progressIndex ? 'font-medium text-primary' : 'text-muted-foreground'}>{index < progressIndex ? '✓' : index === progressIndex ? '•' : '○'} {step}</li>)}</ol>
+                <Button variant="outline" onClick={cancelAnalysis}>ยกเลิกการตรวจ</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </section>}
 
-        {analysisMessage && <Alert className={`mt-5 ${state === 'error' ? 'border-red-200 bg-red-50 text-red-950' : 'border-sky-200 bg-sky-50 text-sky-950'}`} aria-live="assertive"><AlertCircle className="size-4" /><AlertTitle>{state === 'error' ? 'ยังตรวจเอกสารไม่ได้' : 'สถานะการตรวจ'}</AlertTitle><AlertDescription className="flex flex-wrap items-center gap-3">{analysisMessage}{analysisCanRetry && <Button size="sm" variant="outline" onClick={() => void startAnalysis()}>ลองอีกครั้งด้วยคำขอเดิม</Button>}</AlertDescription></Alert>}
+        {analysisNotice && <Alert className={`mt-5 ${analysisNoticeClassName}`} aria-live="assertive">
+          <AlertCircle className="size-4" />
+          <AlertTitle>{analysisNoticeTitle}</AlertTitle>
+          <AlertDescription className={showOfflineMascot ? 'grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center' : undefined}>
+            {showOfflineMascot && <img data-mascot="offline" src={offlineMascotUrl} alt="" className="mx-auto h-28 w-auto sm:h-32" />}
+            <div className="flex flex-wrap items-center gap-3">
+              <span>{analysisNotice.message}</span>
+              {analysisNotice.canRetry && <Button size="sm" variant="outline" onClick={() => void startAnalysis()}>ลองอีกครั้งด้วยคำขอเดิม</Button>}
+            </div>
+          </AlertDescription>
+        </Alert>}
 
         {state === 'result' && result && <section ref={resultRef} tabIndex={-1} className="mt-5 scroll-mt-4 space-y-5 outline-none" aria-label="ผลวิเคราะห์">
           <Card><CardHeader><CardTitle>{getDocumentTypeDefinition(result.documentType).resultTitle}</CardTitle><CardDescription>ผลเบื้องต้น · ประเภทงาน {getDocumentTypeDefinition(result.documentType).label} · โมเดล {result.model} · เกณฑ์รุ่น {result.rubricVersion}</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm text-muted-foreground">{result.overallScore === null ? 'ทุกหัวข้อในเกณฑ์ถูกประเมินว่าไม่เกี่ยวข้องกับงานชิ้นนี้ ระบบจึงไม่คำนวณคะแนนรวม' : 'คะแนนรวมคำนวณด้วยโค้ดจากหัวข้อที่เกี่ยวข้องเท่านั้น หัวข้อที่ไม่เกี่ยวข้องไม่ถูกนับในตัวหาร'}</p><p className={`mt-1 font-semibold ${result.overallScore === null ? 'text-2xl text-muted-foreground' : 'text-5xl text-primary'}`}>{formatOverallScore(result)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="outline">ใช้ประเมิน {result.scoreSummary.applicableSectionCount}/{result.sections.length} หัวข้อ</Badge>{result.scoreSummary.notApplicableSectionCount > 0 && <Badge variant="secondary">{NOT_APPLICABLE_BADGE} {result.scoreSummary.notApplicableSectionCount} หัวข้อ</Badge>}<Button variant="outline" onClick={copyResult}><Copy />คัดลอกผล</Button><Button variant="outline" onClick={downloadResult}><Download />ดาวน์โหลด .txt</Button><Button variant="outline" onClick={prepareNewAnalysis}>แก้ไขแล้วตรวจใหม่</Button></div></div>{resultActionMessage && <p className="text-sm text-primary" aria-live="polite">{resultActionMessage}</p>}</CardContent></Card>

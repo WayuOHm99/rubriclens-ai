@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-256%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-264%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -110,7 +110,7 @@ cache, and 10-minute idempotency records. Full notes, including the *"which file
 | Check | Command | Result |
 | --- | --- | ---: |
 | Static analysis | `npm run lint` | passed |
-| Unit + component + Worker | `npm run test` | **256 / 256** |
+| Unit + component + Worker | `npm run test` | **264 / 264** |
 | Worker types, generated bindings and dry-run bundle | `npm run worker:check` | passed |
 | Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities**<sup>†</sup> |
 | Production build | `npm run build` | passed |

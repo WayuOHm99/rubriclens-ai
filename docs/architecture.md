@@ -56,6 +56,7 @@
 - เริ่มเพดานรวม 100 วินาทีตั้งแต่ขอบ `handleAnalyze`, จำกัด `countTokens` ครั้งละ 10 วินาทีและ model request ครั้งละ 60 วินาที ใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation พร้อม application-level wait boundary แยกที่ 10/60/100 วินาที จึงหยุด Worker รอได้แม้ promise ของ SDK ยังไม่จบ; timeout ราย call ยังลอง fallback ได้ถ้าเพดานรวมเหลือ แต่ timeout/cancel ของเพดานรวมจะไม่เริ่ม provider call ถัดไป
 - ตรวจ AI response ด้วย schema **และคำนวณ overall score ด้วยโค้ดฝั่ง Worker**
 - `tsconfig.worker.json` ตรวจทั้ง production Worker และ Worker tests ใน strict mode; `npm run worker:check` บังคับ `wrangler types worker/env.d.ts --check`, TypeScript และ dry-run bundle ตามลำดับ จึงจับ binding drift กับ type error ก่อน deploy
+- `npm run verify` รัน `scripts/check-test-modifiers.mjs` เพื่อปฏิเสธ `.only`, `.skip`, `.todo`, `.fixme`, `fit` และ `xit`; Vitest ตั้ง `allowOnly: false` และ Playwright ตั้ง `forbidOnly: true` ทุก environment เพื่อไม่ให้ผลเขียวจาก test เพียงบางส่วนถูกใช้เป็นหลักฐาน
 
 ## Where the score is calculated
 

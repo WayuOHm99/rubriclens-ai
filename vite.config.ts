@@ -36,6 +36,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    allowOnly: false,
     // `e2e/` and `scripts/` hold Playwright specs. Vitest matches `*.spec.ts`
     // anywhere by default, and a Playwright spec loaded by Vitest fails the run
     // outright, so both directories stay out of the unit suite.

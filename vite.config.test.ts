@@ -12,3 +12,11 @@ describe('local Worker connection', () => {
     })
   })
 })
+
+describe('test evidence guard', () => {
+  it('ไม่ยอมให้ Vitest รันเฉพาะ test ที่ติด .only แม้รันในเครื่อง', () => {
+    if (typeof config === 'function') throw new Error('Expected a static Vite configuration')
+
+    expect(config.test?.allowOnly).toBe(false)
+  })
+})

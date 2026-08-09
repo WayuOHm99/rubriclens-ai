@@ -8,7 +8,7 @@ const reuseExistingServer = process.env.E2E_REUSE_SERVER === 'true'
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
-  forbidOnly: isCi,
+  forbidOnly: true,
   retries: isCi ? 1 : 0,
   reporter: isCi ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: { baseURL, trace: 'retain-on-failure' },

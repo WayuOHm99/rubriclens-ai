@@ -1,0 +1,873 @@
+[
+  {
+    "id": "TC001",
+    "title": "Analyze pasted report with the matching rubric",
+    "description": "This verifies that a visitor can paste report text, choose the correct document type, and receive a completed analysis with weighted scoring and criterion-level feedback.",
+    "category": "Document input",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste report text into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Select a document type"
+      },
+      {
+        "type": "action",
+        "description": "Run the analysis"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an overall weighted score is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify criterion-level feedback and recommendations are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Analyze pasted document and review weighted results",
+    "description": "This verifies that a user can paste a report, choose the matching document type and rubric template, run analysis, and review the overall score with criterion feedback, evidence, and recommendations.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a report with clear section structure into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Select the default rubric template"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analysis result is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the overall score, criterion feedback, evidence, and recommendations are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Analyze an uploaded PDF and review extracted text before scoring",
+    "description": "This verifies that a user can upload a PDF, review the extracted readable text, and successfully analyze it after confirming the document content.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Upload a PDF with readable text content"
+      },
+      {
+        "type": "action",
+        "description": "Wait for extraction progress to complete"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the extracted text is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Select the default rubric template"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the weighted analysis result is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Review extracted PDF text before analysis",
+    "description": "This verifies that a visitor can upload a PDF, observe extraction progress, and review the extracted readable text before continuing.",
+    "category": "Document input",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Upload a PDF document"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify PDF extraction progress is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify extracted readable text is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Keep advanced rubric changes with the current tab draft",
+    "description": "This verifies that rubric edits are stored automatically with a non-empty document draft in the current browser tab and restored after a reload.",
+    "category": "Advanced rubric editing",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Enter a document draft"
+      },
+      {
+        "type": "action",
+        "description": "Open advanced rubric controls"
+      },
+      {
+        "type": "action",
+        "description": "Edit a criterion title"
+      },
+      {
+        "type": "action",
+        "description": "Edit a criterion weight"
+      },
+      {
+        "type": "action",
+        "description": "Mark the criterion as not applicable"
+      },
+      {
+        "type": "action",
+        "description": "Wait for the current-tab draft to save automatically"
+      },
+      {
+        "type": "action",
+        "description": "Reload the page in the same browser tab"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document and rubric changes are restored"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the criterion is marked as not applicable"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Edit rubric criteria and rerun analysis with updated scoring",
+    "description": "This verifies that a user can open advanced rubric controls, modify criteria and weights, validate the rubric, and rerun analysis so the updated weighted score replaces the prior result.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a report with enough content for scoring into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Open the advanced rubric controls"
+      },
+      {
+        "type": "action",
+        "description": "Adjust a criterion weight"
+      },
+      {
+        "type": "action",
+        "description": "Add a new criterion"
+      },
+      {
+        "type": "action",
+        "description": "Remove an existing criterion"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated analysis result is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new weighted score replaces the previous result"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "See the rubric update when the document type changes",
+    "description": "This verifies that switching document types updates the default rubric and document-specific guidance for the selected template.",
+    "category": "Document type and rubric templates",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a document type"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the rubric changes to match the selected template"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify document-specific guidance is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Switch to a different document type and confirm the rubric updates",
+    "description": "This verifies that changing from one supported document type to another replaces the rubric with the appropriate template.",
+    "category": "Document type and rubric templates",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select one document type"
+      },
+      {
+        "type": "action",
+        "description": "Select a different document type"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the rubric updates to the new template"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the rubric now matches the chosen document type"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC009",
+    "title": "Mark a rubric criterion not applicable and analyze successfully",
+    "description": "This verifies that a user can mark a rubric criterion as not applicable and still complete analysis with the adjusted rubric.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a report with enough content for scoring into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Open the advanced rubric controls"
+      },
+      {
+        "type": "action",
+        "description": "Mark one criterion as not applicable"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analysis completes successfully"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify criterion-level feedback reflects the not applicable adjustment"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC010",
+    "title": "Add and remove rubric criteria",
+    "description": "This verifies that a user can expand the rubric by adding a criterion and then remove an unneeded criterion before analysis.",
+    "category": "Advanced rubric editing",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Open advanced rubric controls"
+      },
+      {
+        "type": "action",
+        "description": "Add a criterion"
+      },
+      {
+        "type": "action",
+        "description": "Remove a criterion"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated rubric is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the criterion list reflects the add and remove changes"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC011",
+    "title": "Review extracted text from a PDF with appendix handling",
+    "description": "This verifies that a visitor can review extracted PDF text, detect appendix content, and choose whether to exclude the appendix before analysis.",
+    "category": "Document input",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Upload a PDF document"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify extracted text is displayed for review"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify appendix-related controls or warnings are displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC012",
+    "title": "Handle appendix exclusion before analysis",
+    "description": "This verifies that when an appendix is detected, a user can choose to exclude it and continue with the adjusted document before analysis.",
+    "category": "Appendix handling",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a document that includes an appendix heading and appendix content"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an appendix detection prompt is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Confirm the appendix exclusion choice"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analysis result is displayed for the adjusted document"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC013",
+    "title": "Replace the current document",
+    "description": "This verifies that a visitor can remove an existing document and start over with a new one from the analyzer.",
+    "category": "Document input",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste report text into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Remove the current document"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document input is cleared"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify no analysis result is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC014",
+    "title": "Clear a drafted analysis and return to a blank state",
+    "description": "This verifies that a user can reset the current document and analysis so they can start a fresh evaluation.",
+    "category": "Draft reset",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a short report into the document input"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to clear the current draft"
+      },
+      {
+        "type": "action",
+        "description": "Confirm the reset when prompted"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the empty initial state is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the prior analysis state is cleared"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC015",
+    "title": "Keep appendix text in the document and analyze",
+    "description": "This verifies that a user can decline appendix exclusion and continue editing the full document before analysis.",
+    "category": "Appendix handling",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a document that includes an appendix heading and appendix content"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an appendix detection prompt is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Cancel the appendix exclusion decision"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document remains available for editing"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analysis result is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC016",
+    "title": "Start over after editing a pasted report",
+    "description": "This verifies that a user can abandon an in-progress pasted report and return to a blank analyzer state.",
+    "category": "Draft reset",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Paste a short report into the document input"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to clear or start over"
+      },
+      {
+        "type": "action",
+        "description": "Confirm the reset when prompted"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document input is empty"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analyzer shows the initial empty state"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC017",
+    "title": "Validate rubric errors and continue editing",
+    "description": "This verifies that invalid rubric input shows validation feedback and that correcting the rubric clears the issue so editing can continue.",
+    "category": "Advanced rubric editing",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Open advanced rubric controls"
+      },
+      {
+        "type": "action",
+        "description": "Enter an invalid weight"
+      },
+      {
+        "type": "action",
+        "description": "Leave a criterion empty"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify validation feedback is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Correct the rubric input"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the rubric can continue being edited"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC018",
+    "title": "Fix missing input validation and complete analysis",
+    "description": "This verifies that a user sees validation guidance when the document or rubric is incomplete, corrects the issue, and then completes analysis successfully.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify validation messages are displayed"
+      },
+      {
+        "type": "action",
+        "description": "Paste a report with clear content into the document field"
+      },
+      {
+        "type": "action",
+        "description": "Select the matching document type"
+      },
+      {
+        "type": "action",
+        "description": "Click the analyze button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the analysis result is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC019",
+    "title": "Review extraction quality for a multi-column PDF before analysis",
+    "description": "This verifies that a user can inspect extracted text from a multi-column PDF and confirm the text is usable before running analysis.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Upload a multi-column PDF with readable text content"
+      },
+      {
+        "type": "action",
+        "description": "Wait for extraction progress to complete"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the extracted text is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user can review the extracted text before analysis"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC020",
+    "title": "Review legal information and return to the analyzer",
+    "description": "This verifies that a visitor can open the privacy and terms pages from the app and return to the analyzer without needing an account.",
+    "category": "Document input",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Open the privacy page from the footer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify privacy policy content is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Open the terms page from the footer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify terms content is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC021",
+    "title": "Read the privacy policy from the dedicated page",
+    "description": "This verifies that a visitor can open the privacy page and read the storage and data-processing disclosures without signing in.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /privacy"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the privacy policy content is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify browser storage and data-processing disclosures are visible"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC022",
+    "title": "Read privacy disclosures from the footer and return to the analyzer",
+    "description": "This verifies that a visitor can open the privacy policy from the footer, review data-processing disclosures, and return to the analyzer.",
+    "category": "AI document analysis",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the privacy policy from the footer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify privacy and storage disclosures are displayed"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to return to the analyzer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document analyzer is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC023",
+    "title": "Read the terms of service from the dedicated page",
+    "description": "This verifies that a visitor can open the terms page and review the service terms without signing in.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /terms"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the terms of service content is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the service terms disclosures are visible"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC024",
+    "title": "Review terms disclosures before using the analyzer",
+    "description": "This verifies that a visitor can start on the terms page, review the terms, and navigate back to the analyzer without authentication.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /terms"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the terms content is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Return to the document analyzer from the terms page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document analyzer is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC025",
+    "title": "Review privacy disclosures before using the analyzer",
+    "description": "This verifies that a visitor can start on the privacy page, review the disclosures, and navigate back to the analyzer without authentication.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /privacy"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the browser storage disclosure is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Return to the document analyzer from the privacy page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document analyzer is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC026",
+    "title": "Move from the analyzer to the privacy policy and back",
+    "description": "This verifies that a visitor can open privacy information from the analyzer footer and return to the document analyzer afterward.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Open the privacy page from the footer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the privacy policy page is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Return to the document analyzer from the legal page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document analyzer is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC027",
+    "title": "Move from the analyzer to the terms page and back",
+    "description": "This verifies that a visitor can open terms information from the analyzer footer and return to the document analyzer afterward.",
+    "category": "Legal information",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Open the terms page from the footer"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the terms of service page is displayed"
+      },
+      {
+        "type": "action",
+        "description": "Return to the document analyzer from the legal page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the document analyzer is displayed"
+      }
+    ],
+    "priority": "Low"
+  }
+]

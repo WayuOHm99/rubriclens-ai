@@ -59,6 +59,14 @@
 - `tsconfig.worker.json` ตรวจทั้ง production Worker และ Worker tests ใน strict mode; `npm run worker:check` บังคับ `wrangler types worker/env.d.ts --check`, TypeScript และ dry-run bundle ตามลำดับ จึงจับ binding drift กับ type error ก่อน deploy
 - `npm run verify` รัน `scripts/check-test-modifiers.mjs` เพื่อปฏิเสธ `.only`, `.skip`, `.todo`, `.fixme`, `fit` และ `xit`; Vitest ตั้ง `allowOnly: false` และ Playwright ตั้ง `forbidOnly: true` ทุก environment เพื่อไม่ให้ผลเขียวจาก test เพียงบางส่วนถูกใช้เป็นหลักฐาน
 
+### TestSprite GitHub suite (`testsprite_tests/`)
+
+- `standard_prd.json` และ `testsprite_frontend_test_plan.json` เป็นข้อกำหนดกับแผนที่ TestSprite MCP สร้างจากพฤติกรรมของเว็บ
+- ไฟล์ `TC*.py` คือ browser flows ที่ commit ไว้ให้ TestSprite GitHub App ตรวจพบและนำไปรันเมื่อ Pull Request มี preview deployment
+- `fixtures/` เก็บเฉพาะ PDF สังเคราะห์ที่ไม่มีข้อมูลจริง เพื่อให้ flow อัปโหลดและอ่านข้อความทดสอบซ้ำได้
+- `testsprite-mcp-test-report.md` บันทึกผล cloud, ผลตรวจในเครื่อง และข้อจำกัดของ runner แยกจากกัน; ส่วน `testsprite_tests/tmp/` เป็น log/result เฉพาะเครื่องและถูก Git ละเว้น
+- GitHub App ทำหน้าที่รัน test เท่านั้น ไม่ได้สร้าง test และต้องรอ deployment status ของ Pull Request ก่อนเริ่มตามข้อกำหนดของ TestSprite
+
 ## Where the score is calculated
 
 นี่เป็นจุดที่มักเข้าใจผิด จึงระบุให้ชัด:

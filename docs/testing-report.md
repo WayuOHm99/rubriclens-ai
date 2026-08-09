@@ -2,6 +2,19 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
+## TestSprite GitHub integration repair — 9 สิงหาคม 2026
+
+**สถานะระหว่างทำ: สร้างและตรวจชุด test ที่ commit ได้แล้ว; รอหลักฐานจาก Pull Request ว่า GitHub App ตรวจพบไฟล์**
+
+- สาเหตุของ “No tests detected”: repository มีเพียง `.testsprite/` ซึ่งเป็นแผนของ CLI แต่ยังไม่มี `testsprite_tests/` ที่ TestSprite GitHub App กำหนดให้สร้างด้วย MCP และ commit เข้า repository
+- MCP สร้าง browser test 15 รายการจากแผน 27 รายการ ครอบ 7 กลุ่มพฤติกรรมหลัก; รอบแรก TestSprite cloud ผ่าน 11, failed 2 และ blocked 2
+- ตรวจ failure แล้วพบ test generation ผิด 2 จุด: TC005 สมมติว่ามีปุ่ม Save ทั้งที่เว็บบันทึกร่างอัตโนมัติเฉพาะแท็บ และ TC014 ไม่กดยืนยัน reset พร้อมมี assertion ที่ล้มตายตัว
+- เพิ่ม PDF สังเคราะห์แบบปกติและสองคอลัมน์ แล้วแก้ TC003, TC005, TC014 และ TC019 ตามข้อกำหนดจริง; browser run ในเครื่องผ่าน **4/4**
+- TestSprite cloud rerun ผ่าน TC005; TC003/TC019 ถูกบล็อกเพราะ MCP agent ไม่ได้รับ path ของ fixture ใน repository และ TC014 ถูก generator สร้าง assertion ใหม่ที่เอาคำแนะนำ rubric ถาวรไปตีความเป็นผลวิเคราะห์ค้าง จึงเก็บสคริปต์ที่ผ่าน local เป็น source สำหรับ GitHub suite
+- รายงานแยกรายกรณีอยู่ที่ `testsprite_tests/testsprite-mcp-test-report.md`; `testsprite_tests/tmp/` มี user/run metadata จึงถูก Git ละเว้น
+- Full verification หลังจัดชุด test: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, lint/Worker check/build ผ่าน และ production dependency audit พบ 0 vulnerabilities
+- ยังไม่แก้ application code, Worker, scoring, API contract, deployment หรือ library ใดในงานนี้
+
 ## Favicon cache fix — 9 สิงหาคม 2026
 
 - สาเหตุ: production มี SVG ของ RubricLensAi ถูกต้องแล้ว แต่ HTML ยังใช้ URL `/favicon.svg` เดิม ทำให้เบราว์เซอร์บางเครื่องแสดง favicon เก่าที่จำไว้

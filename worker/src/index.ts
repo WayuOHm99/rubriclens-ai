@@ -38,7 +38,7 @@ const QUALITY_EVENT_TTL_SECONDS = 60 * 60 * 36
 const FOREIGN_SCRIPT_RETRIES = 'foreign-script-retries'
 const FOREIGN_SCRIPT_PERSISTED = 'foreign-script-persisted'
 
-type RateLimitStore = Pick<KVNamespace, 'get' | 'put'>
+type RateLimitStore = Pick<KVNamespace, 'get' | 'put' | 'list'>
 
 type ModelCallControl = {
   signal: AbortSignal
@@ -252,20 +252,22 @@ const aiReachabilitySchema = z.object({
   reachable: z.boolean(), code: z.string().min(1).max(100), checkedAt: z.number().int().nonnegative(),
 }).strict()
 
+const counterEventMetadataSchema = z.object({
+  amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+}).strict()
+
 type AiReachability = z.infer<typeof aiReachabilitySchema>
 
 /**
- * Counts one occurrence of a named quality event for today. Sampled logs cannot
- * answer "is this getting better or worse" for something that happens rarely,
- * so the tally lives in KV where every occurrence is counted exactly once.
- * Deliberately best effort: losing a data point must never fail a review.
+ * Counts one occurrence of a named quality event for today. Each occurrence has
+ * its own expiring key, so a stale KV null/value cannot overwrite a newer tally.
+ * KV listings are still eventually consistent, and this remains best effort:
+ * losing a data point must never fail a review.
  */
 async function recordQualityEvent(store: RateLimitStore | undefined, name: string) {
   if (!store) return
   try {
-    const key = qualityEventKey(name)
-    const existing = Number(await store.get(key) ?? '0')
-    await store.put(key, String(Number.isFinite(existing) ? existing + 1 : 1), { expirationTtl: QUALITY_EVENT_TTL_SECONDS })
+    await writeCounterEvent(store, qualityEventKey(name), 1, QUALITY_EVENT_TTL_SECONDS)
   } catch (error) {
     console.warn(JSON.stringify({ event: 'quality_event_not_recorded', name, reason: error instanceof Error ? error.name : 'unknown' }))
   }
@@ -273,19 +275,72 @@ async function recordQualityEvent(store: RateLimitStore | undefined, name: strin
 
 async function readQualityEvent(store: RateLimitStore | undefined, name: string) {
   if (!store) return 0
-  const counted = Number(await store.get(qualityEventKey(name)) ?? '0')
-  return Number.isFinite(counted) ? counted : 0
+  return readCounterTotal(store, qualityEventKey(name))
 }
 
 function qualityEventKey(name: string) {
   return `stats:${name}:${new Date().toISOString().slice(0, 10)}`
 }
 
-async function incrementCounter(store: RateLimitStore | undefined, key: string, limit: number, amount = 1, expirationTtl = 60 * 60) {
+function counterEventPrefix(key: string) {
+  return `${key}:event:`
+}
+
+async function writeCounterEvent(store: RateLimitStore, key: string, amount: number, expirationTtl: number) {
+  await store.put(`${counterEventPrefix(key)}${crypto.randomUUID()}`, '', {
+    expirationTtl,
+    metadata: { amount },
+  })
+}
+
+async function readCounterEventTotal(store: RateLimitStore, key: string) {
+  const prefix = counterEventPrefix(key)
+  const seenCursors = new Set<string>()
+  let cursor: string | undefined
+  let total = 0
+
+  do {
+    const page = await store.list(cursor ? { prefix, cursor } : { prefix })
+    for (const entry of page.keys) {
+      const parsed = counterEventMetadataSchema.safeParse(entry.metadata)
+      if (!parsed.success) throw new Error('Counter event metadata is invalid')
+      total += parsed.data.amount
+      if (!Number.isSafeInteger(total)) throw new Error('Counter event total is unsafe')
+    }
+    if (page.list_complete) return total
+    if (!page.cursor || seenCursors.has(page.cursor)) throw new Error('Counter event pagination did not advance')
+    seenCursors.add(page.cursor)
+    cursor = page.cursor
+  } while (cursor)
+
+  return total
+}
+
+/**
+ * Reads the old aggregate value during migration, but never writes it again.
+ * New reservations use one immutable event key each, which removes the stale
+ * null/read-modify-write overwrite. KV visibility can still lag across regions,
+ * so this is a conservative abuse guard rather than a strict global counter.
+ */
+async function readCounterTotal(store: RateLimitStore, key: string) {
+  const [legacyValue, eventTotal] = await Promise.all([
+    store.get(key),
+    readCounterEventTotal(store, key),
+  ])
+  const legacyTotal = legacyValue === null ? 0 : Number(legacyValue)
+  if (!Number.isSafeInteger(legacyTotal) || legacyTotal < 0) throw new Error('Legacy counter value is invalid')
+  const total = legacyTotal + eventTotal
+  if (!Number.isSafeInteger(total)) throw new Error('Counter total is unsafe')
+  return total
+}
+
+async function reserveCounterCapacity(store: RateLimitStore | undefined, key: string, limit: number, amount = 1, expirationTtl = 60 * 60) {
   if (!store) return false
-  const existing = Number(await store.get(key) ?? '0')
-  if (!Number.isFinite(existing) || existing + amount > limit) return true
-  await store.put(key, String(existing + amount), { expirationTtl })
+  if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(amount) || amount < 0) return true
+  if (amount === 0) return false
+  const existing = await readCounterTotal(store, key)
+  if (existing + amount > limit) return true
+  await writeCounterEvent(store, key, amount, expirationTtl)
   return false
 }
 
@@ -310,7 +365,7 @@ function createTokenLedger(env: AnalysisEnv): TokenLedger {
     async charge(tokens: number) {
       const amount = Math.max(0, Math.ceil(tokens))
       spent += amount
-      if (await incrementCounter(env.RATE_LIMIT, key, limit, amount, 60 * 60 * 36)) {
+      if (await reserveCounterCapacity(env.RATE_LIMIT, key, limit, amount, 60 * 60 * 36)) {
         throw new ApiFailure('DAILY_TOKEN_BUDGET', 'งบประมาณ token ของระบบวันนี้ครบแล้ว โปรดลองใหม่วันถัดไป', 429)
       }
     },
@@ -429,14 +484,44 @@ function ensureModelCallIsActive(control: ModelCallControl) {
   if (control.signal.aborted) throw stoppedModelCallFailure(control)
 }
 
+function waitForAbortableProviderPromise<T>(providerPromise: Promise<T>, signal: AbortSignal, abortedFailure: () => Error) {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (complete: () => void) => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', stopWaiting)
+      complete()
+    }
+    const stopWaiting = () => finish(() => reject(abortedFailure()))
+
+    providerPromise.then(
+      (value) => finish(() => resolve(value)),
+      (error: unknown) => finish(() => reject(error)),
+    )
+    signal.addEventListener('abort', stopWaiting, { once: true })
+    if (signal.aborted) stopWaiting()
+  })
+}
+
+/**
+ * Stops the Worker waiting as soon as its shared signal aborts, even when the
+ * SDK keeps its own retry promise pending. The provider promise keeps a reject
+ * handler attached because aborting this wait cannot guarantee that provider
+ * work, retries or billing stop at the same moment.
+ */
+function waitForModelCall<T>(providerPromise: Promise<T>, control: ModelCallControl) {
+  return waitForAbortableProviderPromise(providerPromise, control.signal, () => stoppedModelCallFailure(control))
+}
+
 async function countPromptTokens(ai: GoogleGenAI, model: string, systemInstruction: string, prompt: string, control: ModelCallControl) {
   ensureModelCallIsActive(control)
   try {
-    const count = await ai.models.countTokens({
+    const count = await waitForModelCall(ai.models.countTokens({
       model,
       contents: `${systemInstruction}\n\n${prompt}`,
       config: { httpOptions: { timeout: GEMINI_TOKEN_COUNT_TIMEOUT_MS }, abortSignal: control.signal },
-    })
+    }), control)
     return count.totalTokens ?? 0
   } catch (error) {
     ensureModelCallIsActive(control)
@@ -459,7 +544,7 @@ async function generateValidated(
     const maxOutputTokens = estimateOutputTokens(activeSections.length)
     await ledger.charge(modelCall.promptTokens + maxOutputTokens)
     ensureModelCallIsActive(control)
-    const response = await ai.models.generateContent({
+    const response = await waitForModelCall(ai.models.generateContent({
       model,
       contents: modelCall.prompt,
       config: {
@@ -473,7 +558,7 @@ async function generateValidated(
         // evaluation is constrained instruction-following, so low is enough.
         thinkingConfig: { thinkingLevel: 'low' },
       },
-    })
+    }), control)
     return response.text ?? ''
   }
   try {
@@ -605,7 +690,7 @@ async function analyzeWithGemini(payload: AnalysisPayload, activeSections: Activ
   }
 
   const dailyRequestLimit = Number(env.DAILY_BUDGET_LIMIT ?? '100')
-  if (env.RATE_LIMIT && await incrementCounter(env.RATE_LIMIT, `budget:requests:${new Date().toISOString().slice(0, 10)}`, Number.isFinite(dailyRequestLimit) ? dailyRequestLimit : 100, 1, 60 * 60 * 36)) {
+  if (env.RATE_LIMIT && await reserveCounterCapacity(env.RATE_LIMIT, `budget:requests:${new Date().toISOString().slice(0, 10)}`, Number.isFinite(dailyRequestLimit) ? dailyRequestLimit : 100, 1, 60 * 60 * 36)) {
     throw new ApiFailure('DAILY_REQUEST_BUDGET', 'จำนวนการตรวจของระบบวันนี้ครบแล้ว โปรดลองใหม่วันถัดไป', 429)
   }
 
@@ -658,11 +743,17 @@ async function probeGeminiReachable(env: AnalysisEnv): Promise<AiReachability> {
   if (!env.GEMINI_API_KEY) return { reachable: false, code: 'AI_CONFIGURATION', checkedAt: nowInSeconds() }
 
   const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, httpOptions: { timeout: AI_CHECK_TIMEOUT_MS } })
+  const deadlineSignal = AbortSignal.timeout(AI_CHECK_TIMEOUT_MS)
   try {
-    await ai.models.countTokens({ model: env.GEMINI_MODEL?.trim() || DEFAULT_PRIMARY_MODEL, contents: 'health check' })
+    await waitForAbortableProviderPromise(ai.models.countTokens({
+      model: env.GEMINI_MODEL?.trim() || DEFAULT_PRIMARY_MODEL,
+      contents: 'health check',
+      config: { httpOptions: { timeout: AI_CHECK_TIMEOUT_MS }, abortSignal: deadlineSignal },
+    }), deadlineSignal, () => new ApiFailure('GEMINI_TIMEOUT', 'Gemini ตอบ health check ไม่ทันเวลา', 504, true))
     return { reachable: true, code: 'OK', checkedAt: nowInSeconds() }
   } catch (error) {
-    const verdict = { reachable: false, code: mapGeminiError(error).code, checkedAt: nowInSeconds() }
+    const failure = error instanceof ApiFailure ? error : mapGeminiError(error)
+    const verdict = { reachable: false, code: failure.code, checkedAt: nowInSeconds() }
     console.warn(JSON.stringify({ event: 'gemini_health_check_failed', code: verdict.code }))
     return verdict
   }
@@ -741,6 +832,14 @@ function serializeAnalysisResponse(
 }
 
 export async function handleAnalyze(request: Request, env: AnalysisEnv) {
+  // Start the shared clock at the request boundary so validation, KV work and
+  // provider preparation cannot silently consume time before it exists.
+  const deadlineSignal = AbortSignal.timeout(GEMINI_ANALYSIS_TIMEOUT_MS)
+  const modelCallControl: ModelCallControl = {
+    requestSignal: request.signal,
+    deadlineSignal,
+    signal: AbortSignal.any([request.signal, deadlineSignal]),
+  }
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) throw new ApiFailure('UNSUPPORTED_CONTENT_TYPE', 'คำขอต้องเป็น JSON', 415)
   const idempotencyKey = request.headers.get('Idempotency-Key')
   if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 200) throw new ApiFailure('INVALID_IDEMPOTENCY_KEY', 'คำขอตรวจไม่สมบูรณ์ โปรดรีเฟรชหน้าแล้วลองใหม่', 400)
@@ -776,18 +875,12 @@ export async function handleAnalyze(request: Request, env: AnalysisEnv) {
   if (env.RATE_LIMIT) {
     const window = new Date().toISOString().slice(0, 13)
     const [ipHash, tokenHash] = await Promise.all([hashKey(getClientIp(request)), hashKey(parsed.data.anonymousToken)])
-    const limitedIp = await incrementCounter(env.RATE_LIMIT, `rate:ip:${ipHash}:${window}`, RATE_LIMIT_PER_HOUR)
-    const limitedToken = await incrementCounter(env.RATE_LIMIT, `rate:anon:${tokenHash}:${window}`, RATE_LIMIT_PER_HOUR)
+    const limitedIp = await reserveCounterCapacity(env.RATE_LIMIT, `rate:ip:${ipHash}:${window}`, RATE_LIMIT_PER_HOUR)
+    const limitedToken = await reserveCounterCapacity(env.RATE_LIMIT, `rate:anon:${tokenHash}:${window}`, RATE_LIMIT_PER_HOUR)
     if (limitedIp || limitedToken) throw new ApiFailure('RATE_LIMITED', 'ส่งคำขอครบขีดจำกัดชั่วคราวแล้ว โปรดลองใหม่ในชั่วโมงถัดไป', 429, true)
   } else if (env.MOCK_ANALYSIS !== 'true') throw new ApiFailure('RATE_LIMIT_UNAVAILABLE', 'ระบบจำกัดคำขอยังไม่พร้อม กรุณาแจ้งผู้ดูแลระบบ', 503)
 
   const payload: AnalysisPayload = { reportText: prepared.mainText, referenceSummary: parsed.data.referenceSummary, documentType: parsed.data.documentType }
-  const deadlineSignal = AbortSignal.timeout(GEMINI_ANALYSIS_TIMEOUT_MS)
-  const modelCallControl: ModelCallControl = {
-    requestSignal: request.signal,
-    deadlineSignal,
-    signal: AbortSignal.any([request.signal, deadlineSignal]),
-  }
   const modelOutput = env.MOCK_ANALYSIS === 'true'
     ? { response: { ...mockModelResponse(activeSections), consistencyNotes: [`Mock: ${getDocumentTypeDefinition(parsed.data.documentType).consistencyLabel}`] }, model: 'mock-analysis-v1', chunkCount: 1 }
     : await analyzeWithGemini(payload, activeSections, env, createTokenLedger(env), modelCallControl)
@@ -816,31 +909,36 @@ export async function handleAnalyze(request: Request, env: AnalysisEnv) {
  */
 async function watchGeminiReachable(env: AnalysisEnv) {
   const verdict = await probeGeminiReachable(env)
-  await env.RATE_LIMIT?.put(AI_CHECK_CACHE_KEY, JSON.stringify(verdict), { expirationTtl: AI_CHECK_CACHE_SECONDS })
   if (verdict.reachable) {
     console.log(JSON.stringify({ event: 'gemini_watch_ok' }))
-    return
+  } else {
+    // Record and alert the outage before refreshing KV. A cache failure must
+    // still leave an observable outage signal and must fail the scheduled run.
+    console.error(JSON.stringify({ event: 'gemini_watch_failed', code: verdict.code }))
+    if (env.ALERT_WEBHOOK_URL) {
+      try {
+        const message = `RubricLensAi: Gemini เรียกไม่ได้ (${verdict.code}) ระบบตรวจเอกสารใช้งานไม่ได้ในขณะนี้`
+        const response = await fetch(env.ALERT_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          // Discord reads `content`, Slack reads `text`; the code is repeated
+          // as its own field for anything that parses the body.
+          body: JSON.stringify({
+            content: message,
+            text: message,
+            code: verdict.code,
+          }),
+          signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
+        })
+        if (!response.ok) throw new Error(`Alert webhook returned HTTP ${response.status}`)
+      } catch (error) {
+        // A failed alert must not retry the whole scheduled run; the outage log
+        // above is still recorded either way.
+        console.error(JSON.stringify({ event: 'gemini_watch_alert_failed', reason: error instanceof Error ? error.name : 'unknown' }))
+      }
+    }
   }
-
-  console.error(JSON.stringify({ event: 'gemini_watch_failed', code: verdict.code }))
-  if (!env.ALERT_WEBHOOK_URL) return
-  try {
-    await fetch(env.ALERT_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      // `content` is what Discord and Slack-compatible webhooks read. The code
-      // is repeated as its own field for anything that parses the body.
-      body: JSON.stringify({
-        content: `RubricLensAi: Gemini เรียกไม่ได้ (${verdict.code}) ระบบตรวจเอกสารใช้งานไม่ได้ในขณะนี้`,
-        code: verdict.code,
-      }),
-      signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
-    })
-  } catch (error) {
-    // A failed alert must not retry the whole scheduled run; the log above is
-    // still recorded either way.
-    console.error(JSON.stringify({ event: 'gemini_watch_alert_failed', reason: error instanceof Error ? error.name : 'unknown' }))
-  }
+  await env.RATE_LIMIT?.put(AI_CHECK_CACHE_KEY, JSON.stringify(verdict), { expirationTtl: AI_CHECK_CACHE_SECONDS })
 }
 
 export default {

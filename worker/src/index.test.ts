@@ -25,9 +25,41 @@ const body = {
 
 class MemoryKv {
   readonly values = new Map<string, string>()
+  readonly metadata = new Map<string, unknown>()
   async get(key: string) { return this.values.get(key) ?? null }
-  async put(key: string, value: string) { this.values.set(key, value) }
+  async put(key: string, value: string, options?: { metadata?: unknown }) {
+    this.values.set(key, value)
+    if (options?.metadata === undefined) this.metadata.delete(key)
+    else this.metadata.set(key, options.metadata)
+  }
+  async list(options: { prefix?: string; limit?: number; cursor?: string } = {}) {
+    const prefix = options.prefix ?? ''
+    const matchingKeys = this.keys().filter((key) => key.startsWith(prefix)).sort()
+    const start = Number(options.cursor ?? '0')
+    const limit = options.limit ?? 1_000
+    const pageKeys = matchingKeys.slice(start, start + limit)
+    const next = start + pageKeys.length
+    return {
+      keys: pageKeys.map((name) => ({ name, metadata: this.metadata.get(name) })),
+      list_complete: next >= matchingKeys.length,
+      cursor: next >= matchingKeys.length ? '' : String(next),
+    }
+  }
   keys() { return [...this.values.keys()] }
+}
+
+class StaleCounterReadKv extends MemoryKv {
+  override async get(key: string) {
+    if (key.startsWith('rate:') || key.startsWith('budget:') || key.startsWith('stats:')) return null
+    return super.get(key)
+  }
+}
+
+function recordedEventTotal(store: MemoryKv, counterKey: string) {
+  const prefix = `${counterKey}:event:`
+  return store.keys()
+    .filter((key) => key.startsWith(prefix))
+    .reduce((total, key) => total + Number((store.metadata.get(key) as { amount?: unknown } | undefined)?.amount ?? 0), 0)
 }
 
 const geminiEnv = (overrides: Partial<AnalysisEnv> = {}): AnalysisEnv => ({
@@ -46,14 +78,21 @@ function modelResponse(sections: TestSection[], extra: Record<string, unknown> =
   })
 }
 
-function rejectWhenProviderIsAborted(config: { abortSignal?: AbortSignal } | undefined, onStarted: () => void) {
-  return new Promise<never>((_, reject) => {
-    onStarted()
-    const signal = config?.abortSignal
-    if (!signal) reject(new Error('analysis request did not pass an abort signal'))
-    else if (signal.aborted) reject(signal.reason)
-    else signal.addEventListener('abort', () => reject(signal.reason), { once: true })
-  })
+function providerPromiseThatIgnoresAbort(onStarted: () => void) {
+  onStarted()
+  return new Promise<never>(() => undefined)
+}
+
+async function responseBeforeWatchdog(responsePromise: Promise<Response>) {
+  const outcomePromise = Promise.race([
+    responsePromise,
+    new Promise<'watchdog'>((resolve) => setTimeout(() => resolve('watchdog'), 1)),
+  ])
+  await vi.advanceTimersByTimeAsync(1)
+  const outcome = await outcomePromise
+  expect(outcome).not.toBe('watchdog')
+  if (outcome === 'watchdog') throw new Error('Worker response remained pending after abort')
+  return outcome
 }
 
 function analyzeRequest(payload: unknown, idempotencyKey: string) {
@@ -157,6 +196,50 @@ describe('POST /api/analyze', () => {
     }
     const blocked = await worker.fetch(new Request('https://local.test/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': 'test-idempotency-key-blocked', 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify(body) }), env)
     expect(blocked.status).toBe(429)
+  })
+
+  it('does not let a stale null KV counter read erase hourly usage', async () => {
+    const rateLimit = new StaleCounterReadKv()
+    const env = { MOCK_ANALYSIS: 'true', RATE_LIMIT: rateLimit } satisfies AnalysisEnv
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await worker.fetch(new Request('https://local.test/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': `stale-null-rate-key-${attempt}`, 'CF-Connecting-IP': '198.51.100.17' }, body: JSON.stringify(body) }), env)
+      expect(response.status).toBe(200)
+    }
+
+    const blocked = await worker.fetch(new Request('https://local.test/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': 'stale-null-rate-key-blocked', 'CF-Connecting-IP': '198.51.100.17' }, body: JSON.stringify(body) }), env)
+
+    expect(blocked.status).toBe(429)
+    expect((await blocked.json() as { code: string }).code).toBe('RATE_LIMITED')
+  })
+
+  it('does not let a stale null KV counter read erase the daily request budget', async () => {
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+    sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
+    const rateLimit = new StaleCounterReadKv()
+    const env = geminiEnv({ RATE_LIMIT: rateLimit, DAILY_BUDGET_LIMIT: '1' })
+
+    const first = await worker.fetch(analyzeRequest(body, 'stale-null-daily-request-key-1'), env)
+    const blocked = await worker.fetch(analyzeRequest(body, 'stale-null-daily-request-key-2'), env)
+
+    expect(first.status).toBe(200)
+    expect(blocked.status).toBe(429)
+    expect((await blocked.json() as { code: string }).code).toBe('DAILY_REQUEST_BUDGET')
+    expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not let a stale null KV counter read erase reserved token usage', async () => {
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+    sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
+    const rateLimit = new StaleCounterReadKv()
+    const env = geminiEnv({ RATE_LIMIT: rateLimit, DAILY_TOKEN_BUDGET: '2000' })
+
+    const first = await worker.fetch(analyzeRequest(body, 'stale-null-token-budget-key-1'), env)
+    const blocked = await worker.fetch(analyzeRequest(body, 'stale-null-token-budget-key-2'), env)
+
+    expect(first.status).toBe(200)
+    expect(blocked.status).toBe(429)
+    expect((await blocked.json() as { code: string }).code).toBe('DAILY_TOKEN_BUDGET')
+    expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
   })
 
   it('treats prompt-injection text as report data in mock mode', async () => {
@@ -270,75 +353,134 @@ describe('POST /api/analyze', () => {
     expect(sdkMocks.generateContent.mock.calls.map(([request]) => request.model)).toEqual(['primary-model', 'fallback-model'])
     expect(sdkMocks.clientOptions[0]).toMatchObject({ httpOptions: { timeout: 60_000, retryOptions: { attempts: 3, httpStatusCodes: [408, 429, 500, 502, 503, 504] } } })
     expect(sdkMocks.countTokens.mock.calls[0][0].config).toMatchObject({ httpOptions: { timeout: 10_000 }, abortSignal: expect.any(AbortSignal) })
-    expect(sdkMocks.generateContent.mock.calls[0][0].config).toMatchObject({ abortSignal: sdkMocks.countTokens.mock.calls[0][0].config.abortSignal })
+    const providerSignals = [
+      ...sdkMocks.countTokens.mock.calls.map(([providerRequest]) => providerRequest.config?.abortSignal),
+      ...sdkMocks.generateContent.mock.calls.map(([providerRequest]) => providerRequest.config?.abortSignal),
+    ]
+    expect(providerSignals).not.toContain(undefined)
+    expect(new Set(providerSignals).size).toBe(1)
   })
 
-  it('stops model work when the browser cancels its request', async () => {
+  it('starts the aggregate deadline before KV preparation and starts no provider call after it expires', async () => {
+    const deadlineController = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
+    const rateLimit = new MemoryKv()
+    const originalGet = rateLimit.get.bind(rateLimit)
+    let blockedIdempotencyRead = false
+    let markKvReadStarted = () => undefined
+    const kvReadStarted = new Promise<void>((resolve) => { markKvReadStarted = resolve })
+    let releaseKvRead = () => undefined
+    const kvReadCanFinish = new Promise<void>((resolve) => { releaseKvRead = resolve })
+    vi.spyOn(rateLimit, 'get').mockImplementation(async (key) => {
+      if (key.startsWith('idempotency:') && !blockedIdempotencyRead) {
+        blockedIdempotencyRead = true
+        markKvReadStarted()
+        await kvReadCanFinish
+      }
+      return originalGet(key)
+    })
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+    sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
+    const responsePromise = worker.fetch(analyzeRequest(body, 'early-deadline-key'), geminiEnv({ RATE_LIMIT: rateLimit }))
+
+    try {
+      await kvReadStarted
+      expect(timeoutSpy).toHaveBeenCalledWith(100_000)
+      deadlineController.abort()
+      releaseKvRead()
+      const response = await responsePromise
+
+      expect(response.status).toBe(504)
+      expect(await response.json()).toMatchObject({ code: 'GEMINI_TIMEOUT', retryable: true })
+      expect(sdkMocks.countTokens).not.toHaveBeenCalled()
+      expect(sdkMocks.generateContent).not.toHaveBeenCalled()
+    } finally {
+      deadlineController.abort()
+      releaseKvRead()
+      await responsePromise
+      timeoutSpy.mockRestore()
+    }
+  })
+
+  it('returns promptly when the browser cancels even if the provider promise ignores abort', async () => {
+    vi.useFakeTimers()
     let markProviderStarted = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
-    sdkMocks.countTokens.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+    sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
     const controller = new AbortController()
     const rateLimit = new MemoryKv()
     const request = new Request('https://local.test/api/analyze', {
       method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': 'cancel-model-request-key' }, body: JSON.stringify(body), signal: controller.signal,
     })
 
-    const responsePromise = worker.fetch(request, geminiEnv({ RATE_LIMIT: rateLimit }))
-    await providerStarted
-    controller.abort()
-    const response = await responsePromise
+    try {
+      const responsePromise = worker.fetch(request, geminiEnv({ RATE_LIMIT: rateLimit }))
+      await providerStarted
+      controller.abort()
+      const response = await responseBeforeWatchdog(responsePromise)
 
-    expect(response.status).toBe(499)
-    expect(await response.json()).toMatchObject({ code: 'REQUEST_CANCELLED', retryable: false })
-    expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
-    expect(sdkMocks.generateContent).not.toHaveBeenCalled()
-    expect(rateLimit.keys().filter((key) => key.startsWith('idempotency:'))).toHaveLength(0)
+      expect(response.status).toBe(499)
+      expect(await response.json()).toMatchObject({ code: 'REQUEST_CANCELLED', retryable: false })
+      expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
+      expect(sdkMocks.generateContent).not.toHaveBeenCalled()
+      expect(rateLimit.keys().filter((key) => key.startsWith('idempotency:'))).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  it('stops without trying a fallback model when the Worker deadline expires', async () => {
+  it('returns promptly from token counting without fallback when the Worker deadline expires and the provider promise ignores abort', async () => {
+    vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
     let markProviderStarted = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
-    sdkMocks.countTokens.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+    sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
     const rateLimit = new MemoryKv()
 
     try {
       const responsePromise = worker.fetch(analyzeRequest(body, 'model-deadline-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model', RATE_LIMIT: rateLimit }))
       await providerStarted
       deadlineController.abort()
-      const response = await responsePromise
+      const response = await responseBeforeWatchdog(responsePromise)
 
       expect(timeoutSpy).toHaveBeenCalledWith(100_000)
       expect(response.status).toBe(504)
       expect(await response.json()).toMatchObject({ code: 'GEMINI_TIMEOUT', retryable: true })
       expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
+      expect(sdkMocks.countTokens.mock.calls[0][0].model).toBe('primary-model')
       expect(sdkMocks.generateContent).not.toHaveBeenCalled()
       expect(rateLimit.keys().filter((key) => key.startsWith('idempotency:'))).toHaveLength(0)
     } finally {
       timeoutSpy.mockRestore()
+      vi.useRealTimers()
     }
   })
 
-  it('stops a generation in progress when the Worker deadline expires', async () => {
+  it('returns promptly from generation without fallback or correction when the Worker deadline expires and the provider promise ignores abort', async () => {
+    vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
     let markProviderStarted = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
-    sdkMocks.generateContent.mockImplementation(({ config }: { config?: { abortSignal?: AbortSignal } }) => rejectWhenProviderIsAborted(config, markProviderStarted))
+    sdkMocks.generateContent.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
 
     try {
       const responsePromise = worker.fetch(analyzeRequest(body, 'generation-deadline-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model' }))
       await providerStarted
       deadlineController.abort()
-      const response = await responsePromise
+      const response = await responseBeforeWatchdog(responsePromise)
 
       expect(response.status).toBe(504)
       expect(await response.json()).toMatchObject({ code: 'GEMINI_TIMEOUT', retryable: true })
+      expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
+      expect(sdkMocks.countTokens.mock.calls[0][0].model).toBe('primary-model')
       expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
+      expect(sdkMocks.generateContent.mock.calls[0][0].model).toBe('primary-model')
     } finally {
       timeoutSpy.mockRestore()
+      vi.useRealTimers()
     }
   })
 
@@ -407,13 +549,16 @@ describe('POST /api/analyze', () => {
     sdkMocks.generateContent
       .mockResolvedValueOnce({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจ評価ควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
       .mockResolvedValueOnce({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
-    const rateLimit = new MemoryKv()
+      .mockResolvedValueOnce({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจ評価ควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
+      .mockResolvedValueOnce({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
+    const rateLimit = new StaleCounterReadKv()
 
     await worker.fetch(analyzeRequest(body, 'foreign-script-count-key-1'), geminiEnv({ RATE_LIMIT: rateLimit }))
+    await worker.fetch(analyzeRequest(body, 'foreign-script-count-key-2'), geminiEnv({ RATE_LIMIT: rateLimit }))
 
     const today = new Date().toISOString().slice(0, 10)
-    expect(rateLimit.values.get(`stats:foreign-script-retries:${today}`)).toBe('1')
-    expect(rateLimit.values.get(`stats:foreign-script-persisted:${today}`)).toBeUndefined()
+    expect(recordedEventTotal(rateLimit, `stats:foreign-script-retries:${today}`)).toBe(2)
+    expect(recordedEventTotal(rateLimit, `stats:foreign-script-persisted:${today}`)).toBe(0)
   })
 
   it('tells the reader when foreign characters survived the retry instead of leaving it unexplained', async () => {
@@ -426,7 +571,7 @@ describe('POST /api/analyze', () => {
     const result = await response.json() as { qualityWarnings: string[] }
     expect(response.status).toBe(200)
     expect(result.qualityWarnings[0]).toContain('ตัวอักษรภาษาอื่นปนอยู่')
-    expect(rateLimit.values.get(`stats:foreign-script-persisted:${new Date().toISOString().slice(0, 10)}`)).toBe('1')
+    expect(recordedEventTotal(rateLimit, `stats:foreign-script-persisted:${new Date().toISOString().slice(0, 10)}`)).toBe(1)
   })
 
   it('adds no language warning to a review that came back clean', async () => {
@@ -468,6 +613,57 @@ describe('POST /api/analyze', () => {
     expect(result.error).toContain('ทั้งโมเดลหลักและโมเดลสำรอง')
     expect(result.retryable).toBe(false)
     expect(sdkMocks.generateContent).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('installed Google SDK abort behavior', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    vi.useRealTimers()
+  })
+
+  it('retries an aborted request internally, proving a full SDK mock cannot verify the Worker deadline', async () => {
+    vi.useFakeTimers()
+    const { GoogleGenAI: InstalledGoogleGenAI } = await vi.importActual<typeof import('@google/genai')>('@google/genai')
+    const controller = new AbortController()
+    let markFetchStarted = () => undefined
+    const firstFetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve })
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      markFetchStarted()
+      const signal = init?.signal
+      return new Promise<Response>((_resolve, reject) => {
+        const rejectForAbort = () => reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+        if (signal?.aborted) queueMicrotask(rejectForAbort)
+        else signal?.addEventListener('abort', rejectForAbort, { once: true })
+      })
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const ai = new InstalledGoogleGenAI({
+      apiKey: 'test-key-not-a-real-secret',
+      httpOptions: {
+        retryOptions: {
+          attempts: 3, initialDelay: 0.01, maxDelay: 0.02, expBase: 2, jitter: 0,
+          httpStatusCodes: [408, 429, 500, 502, 503, 504],
+        },
+      },
+    })
+    const providerOutcome = ai.models.countTokens({
+      model: 'test-model', contents: 'diagnostic', config: { abortSignal: controller.signal },
+    }).then(
+      () => ({ resolved: true as const, error: undefined }),
+      (error: unknown) => ({ resolved: false as const, error }),
+    )
+
+    await firstFetchStarted
+    controller.abort()
+    await vi.runAllTimersAsync()
+    const outcome = await providerOutcome
+
+    expect(outcome.resolved).toBe(false)
+    expect(outcome.error).toMatchObject({ name: 'AbortError' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -850,6 +1046,29 @@ describe('GET /api/health with an AI verification', () => {
     expect(sdkMocks.clientOptions[0]).toMatchObject({ httpOptions: { timeout: 5000 } })
   })
 
+  it('returns a degraded health result promptly when the provider promise ignores the health deadline', async () => {
+    vi.useFakeTimers()
+    const healthDeadline = new AbortController()
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(healthDeadline.signal)
+    let markProviderStarted = () => undefined
+    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
+    sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
+
+    try {
+      const responsePromise = worker.fetch(new Request('https://local.test/api/health?verify=ai'), geminiEnv())
+      await providerStarted
+      healthDeadline.abort()
+      const response = await responseBeforeWatchdog(responsePromise)
+
+      expect(timeoutSpy).toHaveBeenCalledWith(5_000)
+      expect(response.status).toBe(503)
+      expect(await response.json()).toMatchObject({ aiReachable: false, aiCheckCode: 'GEMINI_TIMEOUT' })
+    } finally {
+      timeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('says how old the answer is, so a freshly replaced key is not judged on a stale verdict', async () => {
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 3 })
     const rateLimit = new MemoryKv()
@@ -935,7 +1154,10 @@ describe('the hourly watch on the Gemini key', () => {
 
     expect(alerts).toHaveBeenCalledTimes(1)
     expect(alerts.mock.calls[0][0]).toBe('https://hooks.example.test/alert')
-    expect(JSON.parse(alerts.mock.calls[0][1].body as string)).toMatchObject({ code: 'AI_CONFIGURATION' })
+    const payload = JSON.parse(alerts.mock.calls[0][1].body as string) as { code: string; content: string; text: string }
+    expect(payload).toMatchObject({ code: 'AI_CONFIGURATION' })
+    expect(payload.content).toContain('Gemini เรียกไม่ได้')
+    expect(payload.text).toBe(payload.content)
   })
 
   it('stays silent while the key still works, so an alert always means something', async () => {
@@ -973,5 +1195,35 @@ describe('the hourly watch on the Gemini key', () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('webhook unreachable')) as unknown as typeof fetch
 
     await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).resolves.toBeUndefined()
+  })
+
+  it('still logs and sends the outage alert when refreshing the health cache fails', async () => {
+    sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
+    const rateLimit = new MemoryKv()
+    vi.spyOn(rateLimit, 'put').mockRejectedValueOnce(new Error('KV unavailable'))
+    const alerts = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    globalThis.fetch = alerts as unknown as typeof fetch
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit, ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).rejects.toThrow('KV unavailable')
+      expect(log.mock.calls.some(([entry]) => String(entry).includes('gemini_watch_failed'))).toBe(true)
+      expect(alerts).toHaveBeenCalledTimes(1)
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('records an alert-channel failure when the webhook returns a non-success status', async () => {
+    sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 })) as unknown as typeof fetch
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).resolves.toBeUndefined()
+      expect(log.mock.calls.some(([entry]) => String(entry).includes('gemini_watch_alert_failed'))).toBe(true)
+    } finally {
+      log.mockRestore()
+    }
   })
 })

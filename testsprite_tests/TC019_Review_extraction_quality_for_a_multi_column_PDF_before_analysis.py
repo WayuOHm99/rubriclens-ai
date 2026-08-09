@@ -11,12 +11,9 @@ MULTI_COLUMN_PDF_BASE64 = "JVBERi0xLjcKJYGBgYEKCjcgMCBvYmoKPDwKL0ZpbHRlciAvRmxhd
 
 async def run_test():
     async with async_api.async_playwright() as playwright:
-        browser = await playwright.chromium.launch(
-            headless=True,
-            # PDF.js needs its Web Worker. Limit Chromium to one renderer instead
-            # of single-process mode, which closes the browser during extraction.
-            args=["--window-size=1280,720", "--disable-dev-shm-usage", "--renderer-process-limit=1", "--disable-gpu"],
-        )
+        # TestSprite's constrained Chromium process closes when PDF.js starts its
+        # worker. Firefox exercises the same browser PDF flow without that crash.
+        browser = await playwright.firefox.launch(headless=True)
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         context.set_default_timeout(15000)
         page = await context.new_page()

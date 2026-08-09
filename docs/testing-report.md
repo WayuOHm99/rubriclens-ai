@@ -4,7 +4,7 @@
 
 ## TestSprite GitHub integration repair — 9 สิงหาคม 2026
 
-**สถานะระหว่างทำ: สร้างและตรวจชุด test ที่ commit ได้แล้ว; รอหลักฐานจาก Pull Request ว่า GitHub App ตรวจพบไฟล์**
+**สถานะระหว่างทำ: ชุด test ถูก merge เข้า `main` ผ่าน PR #2 แล้ว; กำลังตรวจซ้ำด้วย Pull Request ใหม่เพื่อพิสูจน์ว่า GitHub App อ่านชุดทดสอบจากสาขาหลักได้**
 
 - สาเหตุของ “No tests detected”: repository มีเพียง `.testsprite/` ซึ่งเป็นแผนของ CLI แต่ยังไม่มี `testsprite_tests/` ที่ TestSprite GitHub App กำหนดให้สร้างด้วย MCP และ commit เข้า repository
 - MCP สร้าง browser test 15 รายการจากแผน 27 รายการ ครอบ 7 กลุ่มพฤติกรรมหลัก; รอบแรก TestSprite cloud ผ่าน 11, failed 2 และ blocked 2
@@ -13,6 +13,7 @@
 - TestSprite cloud rerun ผ่าน TC005; TC003/TC019 ถูกบล็อกเพราะ MCP agent ไม่ได้รับ path ของ fixture ใน repository และ TC014 ถูก generator สร้าง assertion ใหม่ที่เอาคำแนะนำ rubric ถาวรไปตีความเป็นผลวิเคราะห์ค้าง จึงเก็บสคริปต์ที่ผ่าน local เป็น source สำหรับ GitHub suite
 - รายงานแยกรายกรณีอยู่ที่ `testsprite_tests/testsprite-mcp-test-report.md`; `testsprite_tests/tmp/` มี user/run metadata จึงถูก Git ละเว้น
 - Full verification หลังจัดชุด test: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, lint/Worker check/build ผ่าน และ production dependency audit พบ 0 vulnerabilities
+- PR [#2 Fix TestSprite GitHub test detection](https://github.com/WayuOHm99/rubriclens-ai/pull/2) ถูก merge แบบปกติเข้า `main` ที่ commit `699c621`; CI หลักและ Worker build ผ่าน ส่วน TestSprite Pre-Check เดิมยังรายงาน “No tests detected” เพราะเกิดก่อนชุดทดสอบอยู่บนสาขาหลัก
 - ยังไม่แก้ application code, Worker, scoring, API contract, deployment หรือ library ใดในงานนี้
 
 ## Favicon cache fix — 9 สิงหาคม 2026

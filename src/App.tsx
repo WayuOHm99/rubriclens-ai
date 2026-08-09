@@ -21,7 +21,7 @@ import { ANONYMOUS_TOKEN_KEY, LEGACY_ANONYMOUS_TOKEN_KEY, LEGACY_SESSION_DRAFT_K
 import { PRIVACY_POLICY_PATH } from '@/lib/site-info'
 import { API_VERSION, API_VERSION_HEADER } from '../shared/api-contract'
 import { createMockAnalysis, formatAnalysisResult, formatOverallScore, isNotApplicable, NOT_APPLICABLE_BADGE, parseAnalysisResponse, type AnalysisResult } from './lib/analysis'
-import { analysisErrorFromNetworkFailure, analysisErrorFromParseFailure, analysisErrorFromWorkerResponse, normalizeUnexpectedAnalysisError, shouldShowOfflineMascot, type AnalysisFailureCategory } from './lib/analysis-failure'
+import { ANALYSIS_RETRY_COOLDOWN_MS, analysisErrorFromNetworkFailure, analysisErrorFromParseFailure, analysisErrorFromWorkerResponse, getAnalysisRetryPolicy, normalizeUnexpectedAnalysisError, shouldShowOfflineMascot, type AnalysisFailureCategory, type AnalysisRetryPolicy } from './lib/analysis-failure'
 import { isLikelyPdf, MAX_ANALYSIS_CHARS, MAX_FILE_BYTES, MAX_RAW_CHARS, PDF_LIMITS_LABEL, prepareDocument } from './lib/document'
 import { extractPdfText } from './lib/pdf'
 import { analyzeReferences } from './lib/references'
@@ -69,8 +69,26 @@ type Draft = {
 
 type AnalysisNotice = {
   message: string
-  canRetry: boolean
   category?: AnalysisFailureCategory
+  retryPolicy?: AnalysisRetryPolicy
+  retryAvailableAt?: number
+}
+
+type AnalysisFailureForNotice = {
+  message: string
+  category: AnalysisFailureCategory
+  code: string
+  retryable: boolean
+}
+
+function createFailureNotice(failure: AnalysisFailureForNotice, now: number): AnalysisNotice {
+  const retryPolicy = getAnalysisRetryPolicy(failure)
+  return {
+    message: failure.message,
+    category: failure.category,
+    retryPolicy,
+    retryAvailableAt: retryPolicy.mode === 'delayed' ? now + retryPolicy.delayMs : undefined,
+  }
 }
 
 export type AnalysisState = 'idle' | 'input' | 'preview' | 'editing' | 'ready' | 'analyzing' | 'result' | 'error'
@@ -92,13 +110,15 @@ const failureStateLabels: Record<AnalysisFailureCategory, string> = {
 
 const analysisSteps = ['ตรวจขนาดเอกสาร', 'เตรียมเกณฑ์การตรวจ', 'ส่งข้อมูลผ่านระบบที่ปลอดภัย', 'AI อ่านเอกสาร', 'ตรวจความครบถ้วนของคำตอบ', 'รวมผลแต่ละหัวข้อ', 'คำนวณคะแนนรวม']
 
+const anonymousTokenPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
 function getAnonymousToken() {
   const key = ANONYMOUS_TOKEN_KEY
   const legacyKey = LEGACY_ANONYMOUS_TOKEN_KEY
   const token = crypto.randomUUID()
   try {
     const existing = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey)
-    if (existing) return existing
+    if (existing && anonymousTokenPattern.test(existing)) return existing
     window.localStorage.setItem(key, token)
   } catch {
     // Browsers can block storage in strict privacy modes. A session-only token still allows analysis.
@@ -154,6 +174,7 @@ function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [progressIndex, setProgressIndex] = useState(0)
   const [analysisNotice, setAnalysisNotice] = useState<AnalysisNotice | null>(null)
+  const [retryClock, setRetryClock] = useState(Date.now)
   const [resultActionMessage, setResultActionMessage] = useState<string | null>(null)
   const [anonymousToken] = useState(getAnonymousToken)
   const [documentType, setDocumentType] = useState<DocumentType>(initialDraft.documentType)
@@ -203,7 +224,12 @@ function App() {
   const exceedsAnalysisLimit = preparedDocument.mainText.length > MAX_ANALYSIS_CHARS
   const isTooShort = preparedDocument.mainText.trim().length > 0 && preparedDocument.mainText.trim().length < 100
   const controlsLocked = state === 'analyzing' || isExtracting
-  const canAnalyze = Boolean(preparedDocument.mainText.trim()) && !exceedsRawLimit && !exceedsAnalysisLimit && !controlsLocked && state !== 'result' && rubricValidation.success
+  const retryPolicy = analysisNotice?.retryPolicy
+  const retryAvailableAt = analysisNotice?.retryAvailableAt
+  const retryCooldownActive = retryPolicy?.mode === 'delayed'
+    && retryClock < (retryAvailableAt ?? Number.POSITIVE_INFINITY)
+  const unchangedRetryBlocked = retryPolicy?.mode === 'none' || retryCooldownActive
+  const canAnalyze = Boolean(preparedDocument.mainText.trim()) && !exceedsRawLimit && !exceedsAnalysisLimit && !controlsLocked && state !== 'result' && rubricValidation.success && !unchangedRetryBlocked
   const priorityItems = useMemo(() => {
     if (!result) return []
     // Sections that do not apply to this kind of work carry no gap to fix.
@@ -240,6 +266,15 @@ function App() {
     analysisAbortRef.current?.abort()
     pdfAbortRef.current?.abort()
   }, [])
+
+  useEffect(() => {
+    if (retryPolicy?.mode !== 'delayed' || analysisNotice?.retryAvailableAt === undefined) return
+    const retryAvailableAt = analysisNotice.retryAvailableAt
+    const remainingMs = retryAvailableAt - Date.now()
+    if (remainingMs <= 0) return
+    const timer = window.setTimeout(() => setRetryClock(retryAvailableAt), remainingMs)
+    return () => window.clearTimeout(timer)
+  }, [analysisNotice, retryPolicy])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -279,7 +314,9 @@ function App() {
   const markContentChanged = (nextText: string) => {
     if (state !== 'analyzing') setState(nextText.trim() ? 'input' : 'idle')
     setResult(null)
-    setAnalysisNotice(null)
+    if (!analysisNotice?.retryPolicy || analysisNotice.category === 'validation' || analysisNotice.category === 'conflict') {
+      setAnalysisNotice(null)
+    }
     setResultActionMessage(null)
     setAppendixConfirmed(false)
     idempotencyKeyRef.current = null
@@ -288,7 +325,9 @@ function App() {
   const markRubricChanged = (nextRubric: RubricSection[]) => {
     setRubric(nextRubric)
     setResult(null)
-    setAnalysisNotice(null)
+    if (!analysisNotice?.retryPolicy || analysisNotice.category === 'validation' || analysisNotice.category === 'conflict') {
+      setAnalysisNotice(null)
+    }
     idempotencyKeyRef.current = null
     if (state === 'result') setState('ready')
   }
@@ -352,7 +391,7 @@ function App() {
   }
 
   const startAnalysis = async (appendixIsConfirmed = appendixConfirmed) => {
-    if (analysisInFlightRef.current || state === 'analyzing') return
+    if (analysisInFlightRef.current || state === 'analyzing' || unchangedRetryBlocked) return
     analysisInFlightRef.current = true
 
     const valid = await trigger('reportText')
@@ -360,8 +399,8 @@ function App() {
       setState('error')
       setAnalysisNotice({
         message: !preparedDocument.mainText.trim() ? 'กรุณาเพิ่มเนื้อหาเอกสารหลักก่อนเริ่มตรวจ' : 'เนื้อหาเอกสารยังยาวเกินขนาดที่รองรับ ระบบยังไม่ได้ตัดหรือส่งข้อความส่วนใด',
-        canRetry: false,
         category: 'validation',
+        retryPolicy: { mode: 'none' },
       })
       analysisInFlightRef.current = false
       return
@@ -371,8 +410,8 @@ function App() {
       setState('error')
       setAnalysisNotice({
         message: 'เกณฑ์การตรวจยังไม่พร้อม โปรดแก้ไขหัวข้อหรือน้ำหนักก่อนเริ่มตรวจ',
-        canRetry: false,
         category: 'validation',
+        retryPolicy: { mode: 'none' },
       })
       analysisInFlightRef.current = false
       return
@@ -442,10 +481,11 @@ function App() {
         try { payload = JSON.parse(rawPayload) as unknown } catch { payload = undefined }
         const parsedError = apiErrorSchema.safeParse(payload)
         if (!response.ok || parsedError.success) {
-          // The stored request no longer matches this key, so retrying with it
-          // would only conflict again. Drop it and let the next attempt mint one.
-          if (parsedError.success && parsedError.data.code === 'IDEMPOTENCY_CONFLICT') idempotencyKeyRef.current = null
-          throw analysisErrorFromWorkerResponse(parsedError.success ? parsedError.data : undefined, response.status)
+          const failure = analysisErrorFromWorkerResponse(parsedError.success ? parsedError.data : undefined, response.status)
+          // A conflict means the stored request no longer matches this key.
+          // Drop coded and status-only conflicts so an intentional retry can recover.
+          if (failure.category === 'conflict') idempotencyKeyRef.current = null
+          throw failure
         }
         const parsedResult = parseAnalysisResponse(payload, { documentType, rubricVersion, sections: rubric })
         if (!parsedResult.ok) {
@@ -458,24 +498,30 @@ function App() {
     } catch (error) {
       if (controller.signal.aborted) {
         setState('ready')
-        setAnalysisNotice(abortReasonRef.current === 'timeout'
-          ? {
-              message: 'การตรวจใช้เวลานานเกิน 2 นาที โปรดรอสักครู่ก่อนลองอีกครั้งด้วยคำขอเดิม เพื่อลดโอกาสเกิดการตรวจซ้ำ',
-              canRetry: true,
-              category: 'network',
-            }
-          : {
-              message: 'ยกเลิกการตรวจแล้ว ระบบส่งคำสั่งหยุดไปยัง Worker แล้ว หากข้อมูลเริ่มถูกส่งไป Google ผู้ให้บริการอาจยังประมวลผลคำขอนั้นอยู่ โปรดรอสักครู่ก่อนเริ่มใหม่เพื่อลดการใช้โควตาซ้ำ',
-              canRetry: false,
-            })
+        if (abortReasonRef.current === 'timeout') {
+          const now = Date.now()
+          setRetryClock(now)
+          setAnalysisNotice(createFailureNotice({
+            message: 'ส่งคำขอตรวจแล้ว แต่การตรวจใช้เวลานานเกิน 2 นาที โปรดรอช่วงสั้น ๆ ก่อนลองอีกครั้งด้วยคำขอเดิม เพื่อลดโอกาสเกิดการตรวจซ้ำ',
+            category: 'network',
+            code: 'BROWSER_TIMEOUT',
+            retryable: true,
+          }, now))
+        } else {
+          const now = Date.now()
+          setRetryClock(now)
+          setAnalysisNotice({
+            message: 'ยกเลิกการตรวจแล้ว ระบบส่งคำสั่งหยุดไปยัง Worker แล้ว หากข้อมูลเริ่มถูกส่งไป Google ผู้ให้บริการอาจยังประมวลผลคำขอนั้นอยู่ โปรดรอสักครู่ก่อนเริ่มใหม่เพื่อลดการใช้โควตาซ้ำ',
+            retryPolicy: { mode: 'delayed', delayMs: ANALYSIS_RETRY_COOLDOWN_MS },
+            retryAvailableAt: now + ANALYSIS_RETRY_COOLDOWN_MS,
+          })
+        }
       } else {
         const failure = normalizeUnexpectedAnalysisError(error)
+        const now = Date.now()
         setState('error')
-        setAnalysisNotice({
-          message: failure.message,
-          canRetry: failure.retryable,
-          category: failure.category,
-        })
+        setRetryClock(now)
+        setAnalysisNotice(createFailureNotice(failure, now))
       }
     } finally {
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
@@ -580,7 +626,6 @@ function App() {
     setState('input')
     setAnalysisNotice({
       message: 'ยังไม่ได้ส่งเอกสาร คุณสามารถแก้ข้อความหรือกดตรวจอีกครั้งได้',
-      canRetry: false,
     })
     window.requestAnimationFrame(() => editorRef.current?.focus())
   }
@@ -757,7 +802,8 @@ function App() {
             {showOfflineMascot && <img data-mascot="offline" src={offlineMascotUrl} alt="" className="mx-auto h-28 w-auto sm:h-32" />}
             <div className="flex flex-wrap items-center gap-3">
               <span>{analysisNotice.message}</span>
-              {analysisNotice.canRetry && <Button size="sm" variant="outline" onClick={() => void startAnalysis()}>ลองอีกครั้งด้วยคำขอเดิม</Button>}
+              {retryCooldownActive && retryPolicy.mode === 'delayed' && <span className="text-sm">ลองอีกครั้งได้ใน {Math.ceil(retryPolicy.delayMs / 1_000)} วินาที</span>}
+              {retryPolicy && retryPolicy.mode !== 'none' && <Button size="sm" variant="outline" onClick={() => void startAnalysis()} disabled={retryCooldownActive}>ลองอีกครั้งด้วยคำขอเดิม</Button>}
             </div>
           </AlertDescription>
         </Alert>}

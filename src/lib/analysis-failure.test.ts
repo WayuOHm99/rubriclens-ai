@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AnalysisRequestError,
+  ANALYSIS_RETRY_COOLDOWN_MS,
+  GEMINI_RATE_LIMIT_RETRY_COOLDOWN_MS,
   NETWORK_FAILURE_MESSAGE,
   UNEXPECTED_FAILURE_MESSAGE,
   WORKER_RESPONSE_FAILURE_MESSAGE,
   analysisErrorFromNetworkFailure,
   analysisErrorFromParseFailure,
   analysisErrorFromWorkerResponse,
+  getAnalysisRetryPolicy,
   normalizeUnexpectedAnalysisError,
   shouldShowOfflineMascot,
   type AnalysisFailureCategory,
@@ -99,13 +102,55 @@ describe('analysis failure classification', () => {
   })
 
   it('uses HTTP status as a conservative fallback for unknown Worker codes', () => {
-    const unknownClientError = analysisErrorFromWorkerResponse({ error: 'คำขอไม่ถูกต้อง', code: 'NEW_CLIENT_ERROR' }, 418)
+    const unknownClientError = analysisErrorFromWorkerResponse({ error: 'รายละเอียดภายในที่ไม่ควรแสดง', code: 'NEW_CLIENT_ERROR' }, 418)
     const unknownServerError = analysisErrorFromWorkerResponse({ error: 'ระบบไม่พร้อม', code: 'NEW_SERVER_ERROR' }, 503)
     const errorShapedSuccess = analysisErrorFromWorkerResponse({ error: 'ไม่ควรเป็น payload สำเร็จ', code: 'NEW_SUCCESS_ERROR' }, 200)
 
-    expect(unknownClientError).toMatchObject({ category: 'validation', retryable: false })
+    expect(unknownClientError).toMatchObject({ category: 'unexpected', retryable: false })
+    expect(unknownClientError.message).not.toContain('รายละเอียดภายใน')
     expect(unknownServerError).toMatchObject({ category: 'service', retryable: true })
     expect(errorShapedSuccess).toMatchObject({ category: 'service', retryable: false })
+  })
+
+  it.each([
+    [408, 'network'],
+    [429, 'quota'],
+    [409, 'conflict'],
+    [426, 'compatibility'],
+    [400, 'validation'],
+    [413, 'validation'],
+    [415, 'validation'],
+    [422, 'validation'],
+    [401, 'service'],
+    [403, 'service'],
+    [404, 'service'],
+    [405, 'service'],
+  ] satisfies Array<[number, AnalysisFailureCategory]>)('classifies status-only HTTP %s as %s without exposing its raw message', (status, category) => {
+    const error = analysisErrorFromWorkerResponse({ error: `raw-internal-detail-${status}` }, status)
+
+    expect(error.category).toBe(category)
+    expect(error.message).not.toContain(`raw-internal-detail-${status}`)
+  })
+
+  it('keeps a known application code authoritative when its HTTP status is misleading', () => {
+    const error = analysisErrorFromWorkerResponse({
+      error: 'ระบบ AI ยังตั้งค่าไม่สมบูรณ์',
+      code: 'AI_CONFIGURATION',
+      retryable: false,
+    }, 400)
+
+    expect(error).toMatchObject({ category: 'service', code: 'AI_CONFIGURATION', retryable: false })
+    expect(error.message).toBe('ระบบ AI ยังตั้งค่าไม่สมบูรณ์')
+  })
+
+  it.each(['NOT_FOUND', 'METHOD_NOT_ALLOWED'])('keeps endpoint code %s authoritative when its HTTP status is misleading', (code) => {
+    const error = analysisErrorFromWorkerResponse({
+      error: 'ไม่พบ endpoint ที่เรียกใช้',
+      code,
+      retryable: false,
+    }, 400)
+
+    expect(error).toMatchObject({ category: 'service', code, retryable: false })
   })
 
   it('uses a safe generic message when the Worker response cannot be read', () => {
@@ -116,6 +161,23 @@ describe('analysis failure classification', () => {
       retryable: true,
       message: WORKER_RESPONSE_FAILURE_MESSAGE,
     })
+  })
+})
+
+describe('explicit retry policy', () => {
+  it.each([
+    [{ category: 'network', code: 'NETWORK_FAILURE', retryable: true }, { mode: 'delayed', delayMs: ANALYSIS_RETRY_COOLDOWN_MS }],
+    [{ category: 'service', code: 'GEMINI_TIMEOUT', retryable: true }, { mode: 'delayed', delayMs: ANALYSIS_RETRY_COOLDOWN_MS }],
+    [{ category: 'service', code: 'GEMINI_UNAVAILABLE', retryable: true }, { mode: 'delayed', delayMs: ANALYSIS_RETRY_COOLDOWN_MS }],
+    [{ category: 'quota', code: 'GEMINI_RATE_LIMIT', retryable: true }, { mode: 'delayed', delayMs: GEMINI_RATE_LIMIT_RETRY_COOLDOWN_MS }],
+    [{ category: 'conflict', code: 'IDEMPOTENCY_CONFLICT', retryable: false }, { mode: 'immediate' }],
+    [{ category: 'quota', code: 'RATE_LIMITED', retryable: true }, { mode: 'none' }],
+    [{ category: 'quota', code: 'GEMINI_DAILY_QUOTA', retryable: false }, { mode: 'none' }],
+    [{ category: 'service', code: 'AI_CONFIGURATION', retryable: false }, { mode: 'none' }],
+    [{ category: 'compatibility', code: 'INCOMPATIBLE_VERSION', retryable: false }, { mode: 'none' }],
+    [{ category: 'validation', code: 'INVALID_REQUEST', retryable: false }, { mode: 'none' }],
+  ] as const)('maps $0 to $1', (failure, expected) => {
+    expect(getAnalysisRetryPolicy(failure)).toEqual(expected)
   })
 })
 

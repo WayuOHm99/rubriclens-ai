@@ -4,7 +4,7 @@
 
 ## TestSprite GitHub integration repair — 9 สิงหาคม 2026
 
-**สถานะระหว่างทำ: พบข้อกำหนดที่ขาดจาก GitHub runner แล้ว และกำลังตรวจผลแก้บน PR #3**
+**สถานะ: แก้ “No tests detected” แล้ว — PR #3 แสดง `15 Tests detected, waiting for deployment`**
 
 - สาเหตุรอบแรกของ “No tests detected”: repository มีเพียง `.testsprite/` ซึ่งเป็นแผนของ CLI แต่ยังไม่มี `testsprite_tests/` ที่ TestSprite GitHub App กำหนดให้สร้างด้วย MCP และ commit เข้า repository
 - MCP สร้าง browser test 15 รายการจากแผน 27 รายการ ครอบ 7 กลุ่มพฤติกรรมหลัก; รอบแรก TestSprite cloud ผ่าน 11, failed 2 และ blocked 2
@@ -15,6 +15,7 @@
 - Full verification หลังจัดชุด test: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, lint/Worker check/build ผ่าน และ production dependency audit พบ 0 vulnerabilities
 - PR [#2 Fix TestSprite GitHub test detection](https://github.com/WayuOHm99/rubriclens-ai/pull/2) ถูก merge แบบปกติเข้า `main` ที่ commit `699c621`; CI หลักและ Worker build ผ่าน ส่วน TestSprite Pre-Check เดิมยังรายงาน “No tests detected” เพราะยังไม่มีสารบัญ `tmp/test_results.json`
 - PR #3 พิสูจน์ว่าการมี `TC*.py` บน `main` อย่างเดียวยังไม่พอ: source ของ TestSprite `run-action@v1` อ่าน `testsprite_tests/tmp/test_results.json` เพื่อจับคู่ชื่อในแผนกับไฟล์ Python ก่อนส่งไปรัน จึงเพิ่มสารบัญแบบตัด URL, user/session metadata และค่าลับออก โดยยังละเว้นไฟล์ `tmp/` อื่นทั้งหมด
+- หลัง push สารบัญดังกล่าว TestSprite Pre-Check บน PR [#3 Verify TestSprite detection from main](https://github.com/WayuOHm99/rubriclens-ai/pull/3) เปลี่ยนจาก `No tests detected` เป็น `15 Tests detected, waiting for deployment`; ขั้นตรวจพบ test จึงผ่านแล้ว
 - ยังไม่แก้ application code, Worker, scoring, API contract, deployment หรือ library ใดในงานนี้
 
 ## Favicon cache fix — 9 สิงหาคม 2026

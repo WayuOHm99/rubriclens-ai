@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,6 +9,7 @@ import { extractPdfText } from './lib/pdf'
 import { analyzeReferences } from './lib/references'
 import { cloneRubricTemplate, DEFAULT_RUBRIC_TEMPLATE_ID } from './lib/rubric'
 import { API_VERSION, API_VERSION_HEADER } from '../shared/api-contract'
+import { ANONYMOUS_TOKEN_KEY } from './lib/browser-storage'
 import { calculateOverallScore } from '../shared/scoring'
 
 function apiResult(overrides: Record<string, unknown> = {}) {
@@ -28,6 +29,11 @@ function stubApi(payload: unknown, status = 200) {
 }
 
 const longEnoughReport = 'บทนำ เนื้อหารายงานสำหรับทดสอบเส้นทางการเรียก API ให้ครบถ้วนพอสมควร'
+const expectedRetryCooldownMs = 10_000
+
+function queryMascot(kind?: 'brand' | 'thinking' | 'offline') {
+  return document.querySelector(kind ? `[data-mascot="${kind}"]` : '[data-mascot]')
+}
 
 vi.mock('./lib/pdf', () => ({ extractPdfText: vi.fn() }))
 
@@ -40,9 +46,73 @@ describe('App', () => {
     vi.unstubAllGlobals()
   })
 
+  it('keeps an anonymous browser token only when it has the UUID format created by the app', () => {
+    const validStoredToken = '123e4567-e89b-42d3-a456-426614174000'
+    window.localStorage.setItem(ANONYMOUS_TOKEN_KEY, validStoredToken)
+
+    render(<App />)
+
+    expect(window.localStorage.getItem(ANONYMOUS_TOKEN_KEY)).toBe(validStoredToken)
+  })
+
+  it.each([
+    ['too short', 'short'],
+    ['contains a non-hex character', '123e4567-e89b-42d3-a456-42661417400z'],
+    ['is missing UUID separators', '123e4567e89b42d3a456426614174000'],
+  ])('replaces an anonymous browser token that %s', (_reason, invalidStoredToken) => {
+    window.localStorage.setItem(ANONYMOUS_TOKEN_KEY, invalidStoredToken)
+
+    render(<App />)
+
+    const replacementToken = window.localStorage.getItem(ANONYMOUS_TOKEN_KEY)
+    expect(replacementToken).not.toBe(invalidStoredToken)
+    expect(replacementToken).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
   it('does not allow an empty report to be analyzed', () => {
     render(<App />)
     expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+  })
+
+  it('labels the exact true setting as sample data and does not call the Worker', async () => {
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'true')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    const analyzeButton = screen.getByRole('button', { name: 'ตรวจรายงาน' })
+    expect(analyzeButton).toHaveTextContent('ข้อมูลตัวอย่าง')
+    expect(screen.getByText(/เนื้อหาจะไม่ถูกส่งไปยัง Cloudflare หรือ Google Gemini/)).toBeInTheDocument()
+    await user.click(analyzeButton)
+
+    expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toHaveTextContent('ผลจากข้อมูลตัวอย่าง')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('labels the exact false setting as an AI request', async () => {
+    stubApi(apiResult())
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toHaveTextContent('AI')
+    expect(screen.getByText(/จะถูกส่งไปยัง Google Gemini ผ่าน Cloudflare Worker/)).toBeInTheDocument()
+  })
+
+  it.each(['False', '0', 'fales'])('blocks analysis when the mock setting is invalid: %s', async (invalidValue) => {
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', invalidValue)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+    expect(screen.getByText('ระบบตั้งค่าโหมดการตรวจไม่ถูกต้อง')).toBeInTheDocument()
+    expect(screen.getByText(/ยังไม่มีข้อมูลถูกส่งออกจากเบราว์เซอร์/)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('remains usable when browser storage is blocked', () => {
@@ -61,6 +131,20 @@ describe('App', () => {
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
   })
 
+  it('shows mascots only before and during analysis, never with a score result', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(queryMascot('brand')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับตรวจลำดับการแสดงมาสคอต')
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(queryMascot('brand')).not.toBeInTheDocument()
+    expect(queryMascot('thinking')).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
+    expect(queryMascot()).not.toBeInTheDocument()
+  })
+
   it('extracts a selected PDF into preview text', async () => {
     vi.mocked(extractPdfText).mockResolvedValue({
       pageCount: 1,
@@ -72,6 +156,25 @@ describe('App', () => {
     await user.upload(screen.getByLabelText(/อัปโหลด PDF/), new File(['pdf'], 'report.pdf', { type: 'application/pdf' }))
     expect(await screen.findByText(/อ่าน PDF ครบ 1 หน้าแล้ว/)).toBeInTheDocument()
     expect(screen.getByLabelText('ข้อความเอกสาร')).toHaveValue('บทนำ โครงงานทดสอบ PDF')
+  })
+
+  it('announces PDF extraction progress with a name and page count', async () => {
+    let finishExtraction: ((value: { pageCount: number, text: string, warnings: string[] }) => void) | undefined
+    vi.mocked(extractPdfText).mockImplementation((_file, options) => {
+      options?.onProgress?.(2, 4)
+      return new Promise((resolve) => { finishExtraction = resolve })
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.upload(screen.getByLabelText(/อัปโหลด PDF/), new File(['pdf'], 'report.pdf', { type: 'application/pdf' }))
+
+    const progress = await screen.findByRole('progressbar', { name: 'ความคืบหน้าการอ่าน PDF' })
+    expect(progress).toHaveAttribute('aria-valuenow', '50')
+    expect(progress).toHaveAttribute('aria-valuetext', 'อ่านแล้ว 2 จาก 4 หน้า')
+
+    finishExtraction?.({ pageCount: 4, text: 'บทนำ โครงงานทดสอบ PDF', warnings: [] })
+    expect(await screen.findByText(/อ่าน PDF ครบ 4 หน้าแล้ว/)).toBeInTheDocument()
   })
 
   it('warns when a PDF has no text layer and does not offer OCR', async () => {
@@ -105,13 +208,17 @@ describe('App', () => {
     expect(screen.getByText(/ยังไม่ได้ส่งเอกสาร/)).toBeInTheDocument()
   })
 
-  it('analyzes only after appendix exclusion is explicitly confirmed', async () => {
+  it('sends only the main document after appendix exclusion is explicitly confirmed', async () => {
+    const fetchMock = stubApi(apiResult({ documentInfo: { appendixExcluded: true, excludedCharCount: 20 } }))
     const user = userEvent.setup()
     render(<App />)
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาหลัก\n\nภาคผนวก ก\nข้อมูลดิบ')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     await user.click(screen.getByRole('button', { name: 'ยืนยันและส่งตรวจ' }))
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(requestBody.reportText).toBe('บทนำ\nเนื้อหาหลัก')
+    expect(requestBody.reportText).not.toContain('ข้อมูลดิบ')
   })
 
   it('restores a draft only from the current browser session', () => {
@@ -223,11 +330,15 @@ describe('App', () => {
     expect(screen.getByLabelText('ชื่อหัวข้อ หัวข้อใหม่')).toBeInTheDocument()
   })
 
-  it('rejects a rubric with a negative weight', () => {
+  it('identifies the rubric row and control that needs correction', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'แก้ไขหัวข้อและน้ำหนัก' }))
-    fireEvent.change(screen.getByLabelText('น้ำหนัก บทนำและบริบท'), { target: { value: '-1', valueAsNumber: -1 } })
-    expect(screen.getByText(/น้ำหนักต้องไม่ติดลบ/)).toBeInTheDocument()
+    const weightInput = screen.getByLabelText('น้ำหนัก บทนำและบริบท')
+    fireEvent.change(weightInput, { target: { value: '-1', valueAsNumber: -1 } })
+
+    expect(screen.getByText(/บทนำและบริบท: น้ำหนักต้องไม่ติดลบ/)).toBeInTheDocument()
+    expect(weightInput).toHaveAttribute('aria-invalid', 'true')
+    expect(weightInput).toHaveAttribute('aria-describedby', 'rubric-validation-summary')
   })
 
   it('shows detailed mock results after one click', async () => {
@@ -235,7 +346,7 @@ describe('App', () => {
     render(<App />)
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับตรวจ')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
-    expect(screen.getByText(/ตรวจขนาดเอกสาร/)).toBeInTheDocument()
+    expect(within(screen.getByRole('list')).getByText(/ตรวจขนาดเอกสาร/)).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
     expect(screen.getByText('ความสอดคล้องของเอกสาร')).toBeInTheDocument()
     expect(screen.getByText('สิ่งที่ควรแก้ก่อนส่ง')).toBeInTheDocument()
@@ -251,7 +362,103 @@ describe('App', () => {
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ เนื้อหารายงานสำหรับทดสอบผลตอบกลับที่มีข้อมูลไม่ครบถ้วนจากระบบภายนอก')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByText(/ผลตอบกลับจากระบบยังไม่ครบถ้วน/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'ผลวิเคราะห์' })).not.toBeInTheDocument()
+  })
+
+  it('uses the same visible cooldown for the inline retry and the primary submit after a network failure', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'false')
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch https://internal.example/api-key'))
+      .mockResolvedValue(new Response(JSON.stringify(apiResult()), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      render(<App />)
+      fireEvent.change(screen.getByLabelText('ข้อความเอกสาร'), { target: { value: longEnoughReport } })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(screen.getByText(/ไม่สามารถเชื่อมต่อระบบตรวจเอกสารได้/)).toBeInTheDocument()
+      expect(screen.queryByText(/internal\.example|api-key/)).not.toBeInTheDocument()
+      expect(queryMascot('offline')).toBeInTheDocument()
+      expect(screen.getByText('ลองอีกครั้งได้ใน 10 วินาที')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' }))
+      fireEvent.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        vi.advanceTimersByTime(expectedRetryCooldownMs)
+      })
+      expect(screen.queryByText('ลองอีกครั้งได้ใน 10 วินาที')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeEnabled()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not offer either retry control for the hourly request limit', async () => {
+    stubApi({ error: 'ส่งคำขอครบขีดจำกัดชั่วคราวแล้ว โปรดลองอีกครั้งภายหลัง', code: 'RATE_LIMITED', retryable: true }, 429)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText(/ส่งคำขอครบขีดจำกัดชั่วคราวแล้ว/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), ' คำขอใหม่ก็ยังติดขีดจำกัดเดิม')
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+  })
+
+  it('requires the user to correct invalid input before normal submission is enabled again', async () => {
+    stubApi({ error: 'ข้อมูลเอกสารไม่ถูกต้อง', code: 'INVALID_REQUEST', retryable: false }, 400)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText('ข้อมูลเอกสารไม่ถูกต้อง')).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), ' แก้ไขแล้ว')
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeEnabled()
+  })
+
+  it('shows a system mascot for a non-retryable service configuration failure', async () => {
+    stubApi({ error: 'ระบบ AI ยังตั้งค่าไม่สมบูรณ์', code: 'AI_CONFIGURATION', retryable: false }, 503)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+
+    expect(await screen.findByText(/ระบบ AI ยังตั้งค่าไม่สมบูรณ์/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
   })
 
   it('shows an exhausted daily quota clearly without an ineffective retry button', async () => {
@@ -266,7 +473,9 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     expect(await screen.findByText(/โควตารายวันของ Gemini ทั้งโมเดลหลักและโมเดลสำรองครบแล้ว/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
   })
 
   it('uses a new idempotency key when the user explicitly starts a fresh analysis', async () => {
@@ -312,6 +521,11 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     const progressSection = await screen.findByRole('region', { name: 'กำลังตรวจเอกสาร' })
+    const progress = screen.getByRole('progressbar', { name: 'ความคืบหน้าการตรวจโดยประมาณ' })
+    expect(progress).toHaveAttribute('aria-valuenow')
+    expect(progress).toHaveAttribute('aria-valuetext', 'ขั้นตอนปัจจุบัน: ตรวจขนาดเอกสาร')
+    expect(progressSection).not.toHaveAttribute('aria-live')
+    expect(screen.getByText('ขั้นตอนปัจจุบัน: ตรวจขนาดเอกสาร')).toHaveAttribute('aria-live', 'polite')
     await waitFor(() => {
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
       expect(progressSection).toHaveFocus()
@@ -325,7 +539,44 @@ describe('App', () => {
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาสำหรับทดสอบ timeout โดยไม่ส่งข้อมูลไปยัง Gemini จริง')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByText(/การตรวจใช้เวลานานเกิน 2 นาที/)).toBeInTheDocument()
+    expect(queryMascot('offline')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeInTheDocument()
+  })
+
+  it('allows a controlled retry after cancelling instead of locking analysis permanently', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'false')
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      render(<App />)
+      fireEvent.change(screen.getByLabelText('ข้อความเอกสาร'), { target: { value: longEnoughReport } })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+        await Promise.resolve()
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'ยกเลิกการตรวจ' }))
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(screen.getByText(/ยกเลิกการตรวจแล้ว/)).toBeInTheDocument()
+      expect(screen.getByText('ลองอีกครั้งได้ใน 10 วินาที')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+
+      await act(async () => {
+        vi.advanceTimersByTime(expectedRetryCooldownMs)
+      })
+      expect(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows the page limit and the size limit together before a file is chosen', () => {
@@ -406,12 +657,42 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
 
     expect(await screen.findByText(/เป็นคนละรุ่นกับหน้าเว็บนี้/)).toBeInTheDocument()
+    expect(queryMascot('offline')).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'ผลวิเคราะห์' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
   })
 
-  it('mints a fresh idempotency key after the Worker reports a key conflict', async () => {
-    const conflict = new Response(JSON.stringify({ error: 'คีย์คำขอนี้ถูกใช้กับเอกสารหรือเกณฑ์ชุดอื่นไปแล้ว', code: 'IDEMPOTENCY_CONFLICT', retryable: false }), { status: 409, headers: { 'content-type': 'application/json' } })
+  it('mints a fresh idempotency key after a status-only conflict', async () => {
+    const conflict = new Response(JSON.stringify({ error: 'raw conflict detail without an application code' }), { status: 409, headers: { 'content-type': 'application/json' } })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(conflict)
+      .mockResolvedValue(new Response(JSON.stringify(apiResult()), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'false')
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+    expect(await screen.findByText(/รหัสคำขอเดิมขัดแย้งกับข้อมูลที่ส่ง/)).toBeInTheDocument()
+    expect(screen.queryByText(/raw conflict detail/)).not.toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' }))
+    await screen.findByRole('region', { name: 'ผลวิเคราะห์' })
+
+    const firstKey = (fetchMock.mock.calls[0][1].headers as Record<string, string>)['Idempotency-Key']
+    const secondKey = (fetchMock.mock.calls[1][1].headers as Record<string, string>)['Idempotency-Key']
+    expect(secondKey).not.toBe(firstKey)
+  })
+
+  it('keeps the coded Worker conflict recovery path covered', async () => {
+    const conflict = new Response(JSON.stringify({
+      error: 'คีย์คำขอนี้ถูกใช้กับเอกสารหรือเกณฑ์ชุดอื่นไปแล้ว',
+      code: 'IDEMPOTENCY_CONFLICT',
+      retryable: false,
+    }), { status: 409, headers: { 'content-type': 'application/json' } })
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(conflict)
       .mockResolvedValue(new Response(JSON.stringify(apiResult()), { status: 200, headers: { 'content-type': 'application/json' } }))
@@ -424,7 +705,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     expect(await screen.findByText(/ถูกใช้กับเอกสารหรือเกณฑ์ชุดอื่นไปแล้ว/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
+    await user.click(screen.getByRole('button', { name: 'ลองอีกครั้งด้วยคำขอเดิม' }))
     await screen.findByRole('region', { name: 'ผลวิเคราะห์' })
 
     const firstKey = (fetchMock.mock.calls[0][1].headers as Record<string, string>)['Idempotency-Key']

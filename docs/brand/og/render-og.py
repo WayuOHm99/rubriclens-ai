@@ -31,6 +31,7 @@ HERE = Path(__file__).parent
 REPO_ROOT = HERE.parent.parent.parent
 FONT_SOURCE = REPO_ROOT / "node_modules" / "@fontsource" / "noto-sans-thai" / "files"
 FONT_INSTALL_DIR = Path.home() / ".fonts"
+PUBLIC_OG_PATH = REPO_ROOT / "public" / "og.png"
 
 # ชื่อวงศ์ฟอนต์ที่ og.svg เรียกใช้ — ต้องตรงกับค่า font-family ในไฟล์นั้น
 FONT_FAMILY = "RLNotoThai"
@@ -104,9 +105,12 @@ def render() -> int:
     source = HERE / "og.svg"
     target = HERE / "og.png"
     cairosvg.svg2png(url=str(source), write_to=str(target), output_width=1200, output_height=630)
+    PUBLIC_OG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(target, PUBLIC_OG_PATH)
 
     size_kb = target.stat().st_size / 1024
     print(f"\nสร้าง {target.name} แล้ว — 1200x630 พิกเซล, {size_kb:.0f} KB")
+    print("คัดลอก og.png ไป public แล้ว")
     print("อย่าลืมเปิดดูด้วยตาก่อนใช้งาน ว่าตัวอักษรไทยไม่กลายเป็นสี่เหลี่ยมเปล่า")
     return 0
 

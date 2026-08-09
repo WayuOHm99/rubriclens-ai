@@ -2,11 +2,187 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
+## Favicon cache fix — 9 สิงหาคม 2026
+
+- สาเหตุ: production มี SVG ของ RubricLensAi ถูกต้องแล้ว แต่ HTML ยังใช้ URL `/favicon.svg` เดิม ทำให้เบราว์เซอร์บางเครื่องแสดง favicon เก่าที่จำไว้
+- RED: `npm test -- vite.config.test.ts` — **1 failed, 2 passed** เพราะ `index.html` ยังไม่มี URL ที่ระบุรุ่น
+- GREEN: `npm test -- vite.config.test.ts` — **3/3 passed** หลังหน้าแรก, privacy, terms และ 404 ใช้ `/favicon.svg?v=rubriclens-1` ตรงกัน
+- Full verification: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, audit พบ 0 vulnerabilities
+- Pages production deployment: `fdbe0e5d-3acb-476d-8231-29abf5212856` จาก source commit `c0bea77`; rollback point คือ `8c96946a-6c59-4fd3-8c17-4831364b5e85`
+- Production smoke: หน้าแรก, privacy และ terms ตอบ HTTP 200 พร้อม URL favicon รุ่นใหม่; `/cookies` ตอบ 404 พร้อม URL เดียวกัน; `/favicon.svg?v=rubriclens-1` ตอบ 200 และ SVG ระบุ `RubricLensAi`
+- TestSprite replay: หน้าแรก run `7dcfe714-702c-4c9e-a2e8-26237a1d887a` และ privacy run `67792947-8163-4975-bb26-d5758fe43c15` — **2/2 passed**, 0 failed/blocked, 0 timed out
+
+## Production verification — 9 สิงหาคม 2026 (Phase 2)
+
+**สถานะ: production ใช้งานได้; เส้นทางหลักผ่านจริง และมี TestSprite 3 รายการถูกบล็อกด้วยข้อจำกัดของ runner มือถือ**
+
+- Source commit: `e7f4ff4e07aaad0f31c55255239af356c3a0d90e` บน branch `phase2-brand-integration`
+- Draft PR: [#1 Phase 2 brand integration and reliability safeguards](https://github.com/WayuOHm99/rubriclens-ai/pull/1)
+- GitHub Actions หลัก: ผ่าน — lint, unit, Worker, audit, build และ production-preview E2E ใช้เวลา 2 นาที 57 วินาที
+- Worker version ใหม่: `c3fa8f5f-8664-4d0d-a5b2-49f89a1bcbb9`
+- Worker version ก่อน deploy สำหรับ rollback: `97142c17-3011-4804-87da-d3ff637a0e35`
+- Pages deployment ใหม่: `8c96946a-6c59-4fd3-8c17-4831364b5e85` (`https://8c96946a.rubriclensai.pages.dev`)
+- Pages deployment ก่อน deploy สำหรับ rollback: `b376c803-3efd-48e3-b530-7cd326a8c204`
+
+### หลักฐานก่อน deploy
+
+```text
+npm ci
+added 593 packages, and audited 594 packages
+found 0 vulnerabilities
+
+npm run verify
+No forbidden test modifiers found in 45 files.
+Test Files  13 passed (13)
+Tests       264 passed (264)
+Worker generated bindings are current.
+Worker strict TypeScript check passed.
+Worker dry-run bundle passed.
+found 0 vulnerabilities
+✓ 2003 modules transformed.
+96 passed (40.8s)
+exit code 0
+```
+
+### Production smoke test
+
+| ตรวจอะไร | ผล |
+| --- | --- |
+| Worker health 10 ครั้งหลัง deploy | **10/10 ผ่าน** — HTTP 200, `status ok`, API v1, รองรับ v0/v1, AI และ rate limit พร้อม |
+| Worker ตรวจการเชื่อมต่อ Gemini | **ผ่าน** — HTTP 200, `aiReachable true`, `aiCheckCode OK` |
+| Method guard | **ผ่าน** — `GET /api/analyze` คืน 405 |
+| CORS หรือกฎว่าเว็บใดเรียก API ได้ | **ผ่าน** — origin `https://rubriclensai.pages.dev`, method `POST, OPTIONS` |
+| API เก่า v0 | **ผ่าน** — HTTP 200 และคืนเฉพาะรูปแบบ v0 โดยไม่มี field ของ v1 รั่วมา |
+| Browser เส้นทางหลัก | **ผ่าน** — เลือกรายงานวิจัย, ใส่ข้อความสังเคราะห์, ได้ผล AI 24%, แสดงหลักฐาน/สิ่งที่ขาด/คำแนะนำครบ |
+| Browser console | **ผ่าน** — 0 errors, 0 warnings บนเส้นทางหลัก |
+| `/privacy` และ `/terms` | **ผ่าน** — ชื่อหน้าและหัวข้อถูกต้อง |
+| `/cookies` | **ผ่าน** — คืน HTTP 404 จริงพร้อมหน้า “ไม่พบหน้าที่คุณเปิด” |
+
+ยังไม่ได้ส่งอีเมลจริงจากลิงก์ `mailto:` เพราะ session นี้ไม่มีสิทธิ์เข้ากล่องอีเมลเพื่อยืนยันการส่งและรับ จึงไม่อ้างว่าตรวจการส่งอีเมลแล้ว
+
+### TestSprite บน production รุ่นนี้
+
+TestSprite CLI `0.4.0` รัน test หน้าเว็บเดิมครบ 14 รายการกับ `https://rubriclensai.pages.dev`:
+
+- **ผ่าน 11 รายการ** — รวมหน้าแรก, empty state, ล้างร่าง, validation, คำเตือนข้อความสั้น, ภาคผนวก, privacy, เปลี่ยนประเภท/เกณฑ์, advanced rubric และส่งข้อความให้ AI จริง
+- **ถูกบล็อก 3 รายการ** — เป็น test มือถือทั้งหมด; runner ระบุเองว่าไม่สามารถจำลอง viewport 390×844 ได้ และให้ `recommendedFixTarget: null` จึงไม่ใช่หลักฐานว่า application ล้มเหลว
+- Artifact ที่ตรวจแล้ว: run `dc5a0f80-2907-4412-aeeb-f8d467ab8d8d`, `34c1c882-30db-4cec-a097-9795c5576a67` และ `d835737f-7daf-4315-aaaa-992620f96b2f`; เก็บไว้ใต้ `.testsprite/runs/` ซึ่ง Git ละเว้น
+- ความเสี่ยงมือถือที่ TestSprite ตรวจไม่ได้ถูกตรวจแยกด้วย Playwright แล้ว: **96/96 E2E ผ่าน** รวม Mobile Chrome, Firefox และ WebKit
+
+[เปิด TestSprite project dashboard](https://www.testsprite.com/dashboard/tests/c76aad7a-c7f9-44a8-a888-a842a4cd386e)
+
 ## Local verification
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**
 
-### รอบล่าสุด — 5 สิงหาคม 2026 รอบสอง (ตัวเฝ้าอัตโนมัติ + ตัวนับคุณภาพภาษา)
+### รอบล่าสุด — 9 สิงหาคม 2026 (ปิด findings จาก owner review; local only)
+
+รอบนี้ตรวจ `HEAD 70c88f0` พร้อม working tree ที่ย้ายกฎมาสคอตออกจากโมดูลจำแนก error, รวมเงื่อนไขล้าง notice ที่ซ้ำ, เปลี่ยนชื่อ Worker tests ให้เจ้าของอ่านเข้าใจ และแก้ implementation record ให้แยกงานแบรนด์ออกจาก reliability ตามจริง งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ production**
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| RED ของ presentation seam | `npm test -- src/lib/analysis-failure.test.ts` | **exit code 1** — test suite หา `./analysis-presentation` ไม่พบก่อนสร้างโมดูลใหม่ |
+| GREEN ของ presentation + หน้าเว็บ | `npm test -- src/lib/analysis-failure.test.ts src/App.test.tsx` | **109/109 passed** ใน 2 test files |
+| Focused หลังรวมเงื่อนไขและเปลี่ยนชื่อ test | `npm test -- src/App.test.tsx worker/src/index.test.ts` | **121/121 passed** ใน 2 test files |
+| Unit/component/Worker/config ทั้งหมด | `npm test` | **264/264 passed** ใน 13 test files |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 90.7 วินาที |
+| Static analysis | `npm run lint` (ใน `verify`) | passed |
+| Focused/skipped test guard | `npm run test:modifiers` (ใน `verify`) | passed — ไม่พบ modifier ต้องห้ามใน 45 source/test files |
+| Worker types, generated bindings and bundle | `npm run worker:check` (ใน `verify`) | passed — generated bindings ตรง, strict TypeScript ผ่าน และ Wrangler dry-run สำเร็จโดยไม่ deploy |
+| Production dependency audit | `npm audit --omit=dev --audit-level=high` (ใน `verify`) | **found 0 vulnerabilities** |
+| Production build | `npm run build` (ใน `verify`) | passed — transformed 2,003 modules |
+| Production-preview E2E | `npm run test:e2e` (ใน `verify`) | **96/96 passed** — Chromium, Mobile Chrome, Firefox, WebKit |
+| Diff whitespace | `git diff --check` | passed — ไม่มี whitespace error |
+| TestSprite preflight | `testsprite --version` + `testsprite auth whoami` | CLI `0.4.0` และ authentication ผ่าน; **ไม่ได้รัน deployed test** เพราะ URL ใน config ยังเป็น production รุ่นเก่า |
+
+TestSprite project `c76aad7a-c7f9-44a8-a888-a842a4cd386e` ชี้ไป `https://rubriclensai.pages.dev/` แต่ code รอบนี้ยังอยู่ในเครื่อง และ session ไม่มี TestSprite MCP สำหรับ tunnel จึงบันทึกสถานะเป็น `unverified-because-undeployed`; การยิง CLI ตอนนี้จะตรวจ production เก่า ไม่ใช่หลักฐานของ diff นี้
+
+### รอบก่อนหน้า — 9 สิงหาคม 2026 (privacy, mock safety, monitoring, budgets และ Worker type gate; local only)
+
+รอบนี้เริ่มจาก `02d6cb2` และ verify source state ถึง commit `3b9728c` (runtime code ล่าสุดอยู่ที่ `e41f1a6`; CI/docs ล่าสุดอยู่ก่อน commit นี้) รวมการแก้ก่อนหน้า `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `99f546d`, `fae793d`, `9716fe7`, `7eefee0`, `f2621da`, `5a7d619`, `3f3acdf`, `30de2cf` และ `a407fef`
+บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ
+production** ผลทั้งหมดด้านล่างจึงรับรอง source/production-preview ในเครื่องเท่านั้น
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
+| Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 98.6 วินาที |
+| Static analysis | `npm run lint` | passed |
+| Focused/skipped test guard | `npm run test:modifiers` | passed — ไม่พบ modifier ต้องห้ามใน 44 source/test files |
+| Unit/component/Worker/config | `npm run test` | **264/264 passed** ใน 13 test files |
+| Worker types, generated bindings and bundle | `npm run worker:check` | passed — generated binding check, strict TypeScript และ dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
+| Production dependency audit | `npm audit --omit=dev --audit-level=high` | **exit code 0 — found 0 vulnerabilities** |
+| Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
+| Production build | `npm run build` (ใน `verify`) | passed — transformed 2,002 modules |
+| Production-preview E2E | `npm run test:e2e` (ใน `verify`) | **96/96 passed** — Chromium, Mobile Chrome, Firefox, WebKit |
+| Diff whitespace | `git diff --check` | passed — ไม่มี whitespace error |
+
+`allowScripts` รอบนี้หมายถึง **ตรวจสี่ package versions ที่ติดตั้งจริงบน environment ปัจจุบันเท่านั้น**:
+`@google/genai@2.15.0`, `esbuild@0.28.1`, `protobufjs@7.6.5` และ
+`workerd@1.20260801.1` การตั้ง `npm allowScripts` เป็นคำแนะนำ (advisory) เว้นแต่เปิด
+`strict-allow-scripts`; optional scripts ของ `fsevents` บน macOS อยู่นอกรายการสี่ตัวที่ตรวจรอบนี้
+และผล install-script review, production dependency audit กับ full-tree audit เป็นหลักฐานคนละเรื่อง
+ห้ามนำผลหนึ่งไปอ้างแทนอีกผลหนึ่ง
+
+หลักฐาน test-first ที่เพิ่มในรอบนี้:
+
+| ปัญหาที่จำลองก่อนแก้ | RED ก่อน production patch | GREEN ล่าสุด |
+| --- | --- | --- |
+| ยืนยันตัดภาคผนวกแต่ request ยังส่งข้อความดิบทั้งฉบับ | App 1 failed; E2E request-body guard เพิ่มแล้ว | App **47/47 passed** และ E2E รวม **96/96 passed** |
+| ค่า mock ที่พิมพ์ผิดเปิดผลตัวอย่างเหมือนผล AI | App focused 5 failed / 5 | App **47/47 passed** |
+| Cron เห็น Gemini outage แต่ run ยังสำเร็จ | Worker 1 failed / 74 | Worker รวมปัจจุบัน **74/74 passed** |
+| daily request budget อยู่หลัง provider `countTokens` | Worker assertion ได้ 2 calls แทน 1 | Worker **74/74 passed** |
+| Worker ไม่มี strict compiler/binding drift gate และใช้ thinking level ที่ SDK ไม่รองรับ | TypeScript RED; Worker follow-up 35 failed แล้วเหลือ 1 assertion ที่รับรองค่าเดิมผิด | Worker type/binding/dry-run ผ่าน และ Worker **74/74 passed** ด้วย `ThinkingLevel.LOW` |
+| คู่มือ local real-Worker ไม่มี Vite `/api` proxy | Config test 1 failed / 1 เพราะ proxy เป็น `undefined` | Config focused **1/1 passed** และ production build ผ่าน |
+| local test runner ยอม `.only` และไม่มีกฎปฏิเสธ skip/todo | Config RED 2 failed / 3; scanner RED 6 failed / 6 ก่อนมีสคริปต์ | Guard focused **9/9 passed** และ scan source ปัจจุบันไม่พบ modifier ต้องห้าม |
+| SDK promise ไม่จบหลัง aggregate deadline/cancel | Worker 4 failed / 65 | Worker รวมปัจจุบัน **74/74 passed** |
+| SDK promise ไม่จบหลังเพดานย่อย 10/60 วินาที | Worker 2 failed / 73 | Worker **74/74 passed** โดยยังเริ่ม fallback เดิมได้เมื่อ aggregate deadline ยังเหลือ |
+| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 264/264 |
+| anonymous token ที่ non-empty แต่รูปแบบเสีย | App 3 failed / 41 | App **41/41 passed** ใน focused run นั้น |
+| stale-null KV, cron cache failure, webhook non-2xx | Worker 7 failed / 70 | Worker **70/70 passed** ก่อนเพิ่ม health deadline |
+| health SDK promise ไม่จบหลัง 5 วินาที | Worker 1 failed / 71 | Worker **71/71 passed** |
+| Slack payload ไม่มี `text` | Worker 1 failed / 71 | Worker **71/71 passed** |
+| PDF chars/items และลูปกำลังสอง | PDF 4 failed / 10 | PDF **13/13 passed**; grouping-equivalence 20,000 randomized cases passed |
+
+TestSprite CLI `0.4.0` และ authentication preflight ใช้ได้กับ project
+`c76aad7a-c7f9-44a8-a888-a842a4cd386e` แต่ **ไม่ได้รัน test กับ URL production** เพราะ code ชุดนี้
+ยังไม่ถูก deploy และ session นี้ไม่มี TestSprite MCP สำหรับ tunnel การยิง CLI ไปที่
+`https://rubriclensai.pages.dev/` ตอนนี้จะตรวจ code รุ่นเก่า จึงบันทึกสถานะเป็น
+`unverified-because-undeployed` ตามจริง
+
+Core Web Vitals (LCP, INP, CLS) ยังไม่ได้วัด เพราะ session นี้ไม่มี Chrome DevTools MCP ตามที่
+`web-perf` ต้องใช้ ไม่ได้ตีความ build size หรือ E2E ว่าเป็นค่าเหล่านี้ CI workflow ถูกตรึง
+`actions/checkout` v7.0.1, `actions/setup-node` v7.0.0 และ `actions/upload-artifact` v7.0.1 เป็น full commit SHA และใช้ Node 24 runtime แล้ว local lint กับ test-modifier guard ผ่านหลังแก้ workflow แต่ไม่มี `actionlint` ติดตั้งใน session และ remote CI ยังไม่รันเพราะยังไม่มีการ push
+
+### รอบก่อนหน้า — 8 สิงหาคม 2026 (Phase 2 + reliability + dependency maintenance, local only)
+
+ผลรอบนี้ตรวจซอร์สและ production-preview ในเครื่องเท่านั้น งานยัง **ไม่ได้ push, merge เข้า remote
+หรือ deploy** จึงไม่ใช่หลักฐานว่า production ใช้โค้ดชุดนี้แล้ว
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| Reproducible install | `npm ci` | **exit code 0** — Node.js `24.18.0`, npm `11.16.0`; installed 593 packages and found 0 vulnerabilities |
+| Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | no unreviewed scripts — four required scripts are approved at their exact installed versions |
+| ทั้งชุด | `npm run verify` | **exit code 0** |
+| Static analysis | `npm run lint` | passed |
+| Unit/component | `npm run test` | **198/198 passed** |
+| Worker bundle and bindings | `npm run worker:check` | passed — dry-run ด้วย `wrangler 4.120.0` |
+| Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities** |
+| Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
+| Production build | `npm run build` | passed |
+| Production-preview E2E | `npm run test:e2e` | **96/96 passed** |
+
+Production audit กับ full-tree audit เป็นคนละหลักฐาน: รายการแรกตัด development dependencies
+(เครื่องมือที่ไม่ถูกส่งไปทำงานกับผู้ใช้) ออก ส่วนรายการหลังตรวจ dependency ทั้งหมดรวมเครื่องมือพัฒนา
+รอบนี้ทั้งสองคำสั่งเป็นศูนย์หลังอัปเดต `wrangler` และ `nanoid` แบบเจาะจง ไม่ได้ใช้
+`npm audit fix` แบบกว้าง รายการ Hono moderate ที่เคยบันทึกไว้ด้านล่างเป็นหลักฐานทางประวัติศาสตร์
+และ **ไม่ใช่สถานะปัจจุบัน**
+
+E2E รันกับ production build ผ่าน `vite preview` ครบ Chromium, Mobile Chrome (Pixel 5), Firefox
+และ WebKit ผลนี้ครอบคลุมโค้ดในเครื่อง แต่ยังไม่แทน production smoke test หรือ TestSprite หลัง deploy
+
+### รอบก่อนหน้า — 5 สิงหาคม 2026 รอบสอง (ตัวเฝ้าอัตโนมัติ + ตัวนับคุณภาพภาษา)
 
 | Layer | Command | Result |
 | --- | --- | --- |

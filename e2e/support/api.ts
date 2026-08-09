@@ -70,6 +70,8 @@ type AnalyzeStub = {
   contentType?: string
   overrides?: Record<string, unknown>
   onRequest?: (request: AnalyzeRequestBody, headers: Record<string, string>) => void
+  /** Optional deterministic delay for observing the analyzing state. */
+  delayMs?: number
 }
 
 /** Installs the analyze stub. Returns nothing; assert through `onRequest`. */
@@ -81,6 +83,7 @@ export async function stubAnalyze(page: Page, stub: AnalyzeStub = {}) {
     }
     const request = readAnalyzeRequest(route)
     stub.onRequest?.(request, route.request().headers())
+    if (stub.delayMs) await new Promise((resolve) => setTimeout(resolve, stub.delayMs))
     await route.fulfill({
       status: stub.status ?? 200,
       contentType: stub.contentType ?? 'application/json',

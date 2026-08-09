@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-115%20unit%20%7C%2072%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-264%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -44,10 +44,10 @@ RubricLensAi รับข้อความ (พิมพ์ วาง หรื
 | **หัวข้อ "ไม่เกี่ยวข้อง" ถูกถอดออกจากตัวหารด้วย** | งานวิจัยเชิงคุณภาพไม่ต้องมีสมมติฐาน การทำเครื่องหมาย N/A จึงถอดหัวข้อนั้นออกจาก**ทั้งตัวตั้งและตัวหาร** งานจึงไม่ถูกหักคะแนนเพราะหัวข้อที่ธรรมชาติของงานไม่ต้องมี และถ้าทุกหัวข้อเป็น N/A ระบบคืน `overallScore: null` ไม่ใช่ `0` ที่ทำให้เข้าใจผิด |
 | **เซิร์ฟเวอร์ล้างหลักฐานของหัวข้อ N/A ทิ้ง** | โมเดลที่บอกว่าหัวข้อไม่เกี่ยวข้อง ยังกุข้อความอ้างอิงให้หัวข้อนั้นได้อยู่ดี Worker จึงล้าง `evidence` `missing` และ `score` ทิ้ง และ browser **ปฏิเสธ** หัวข้อ N/A ที่ยังมีค่าเหล่านี้ติดมา |
 | **เอกสารยาววิเคราะห์สองขั้น** | ขั้นแรกอ่านทีละส่วนพร้อมบอกว่ากำลังอ่านส่วนที่เท่าไร ขั้นที่สองสรุปรวมทั้งเอกสารจาก **structured findings เท่านั้น** ไม่ส่งข้อความซ้ำ และไม่ใช้วิธีเลือกคะแนนสูงสุดจาก chunk ถ้าขั้นสรุปรวมล้มเหลว ระบบคืน `CONSOLIDATION_FAILED` แทนที่จะเงียบ ๆ แสดงคะแนนที่ไม่ครบ |
-| **กันส่งซ้ำด้วย digest ของคำขอ ไม่ใช่แค่ key** | record ที่เก็บมี SHA-256 ของคำขอที่ผ่าน validation แล้ว key เดิม + payload เดิม = คืนผลเดิม ส่วน key เดิม + payload ต่าง = `409 IDEMPOTENCY_CONFLICT` จึงเป็นไปไม่ได้ที่ key ซ้ำจะคืนผลของเอกสารคนอื่น และ body ถูกตรวจก่อนแตะ KV เสมอ |
+| **กันส่งซ้ำด้วย digest ของคำขอ ไม่ใช่แค่ key** | record ที่มองเห็นแล้วมี SHA-256 ของคำขอที่ผ่าน validation คำขอภายหลังที่ key/payload เดิมจะคืนผลเดิม ส่วน payload ต่างจะได้ `409 IDEMPOTENCY_CONFLICT` จึงไม่คืนผลเอกสารอื่นจาก cache และ body ถูกตรวจก่อนแตะ KV แต่ KV จองคำขอแรกแบบ atomic ไม่ได้: คำขอแรกที่มาพร้อมกันอาจเรียก AI ทั้งคู่ก่อนเห็น record |
 | **สัญญาระหว่าง client กับ server มีเลขเวอร์ชัน** | `apiVersion` ถูกประทับโดย Worker ตรวจโดย browser และใช้แยก cache ผลลัพธ์จากเซิร์ฟเวอร์รุ่นเก่าถูก parse ด้วย schema แยก แล้ว upgrade อย่างชัดเจนพร้อมแจ้งผู้ใช้ ไม่ใช่ตีความมั่วแล้วเงียบ |
-| **กันค่าใช้จ่ายก่อนเรียก ไม่ใช่หลังเรียก** | ทุกครั้งก่อนเรียกโมเดลจะกันงบแบบอนุรักษ์นิยมจาก `countTokens` จริง บวกเพดาน `maxOutputTokens` ตามจำนวนหัวข้อ แยกกันระหว่าง chunk pass, consolidation pass, การลองใหม่เมื่อ JSON ผิดรูป และการรันบน fallback model |
-| **PDF ถูกจำกัดทั้งจำนวนหน้าและขนาดไฟล์** | ไฟล์ 200 KB มีได้เป็นพันหน้า และการอ่านทำทีละหน้าบนเธรดเดียวกับที่วาดหน้าจอ ระบบจึงตรวจจำนวนหน้าทันทีหลังเปิดไฟล์ ก่อนเริ่มอ่านหน้าแรก ไฟล์เล็กจึงทำให้แท็บค้างไม่ได้ |
+| **ตรวจงบก่อนเรียกโมเดล** | ทุกครั้งก่อนเรียกโมเดลจะจองงบแบบอนุรักษ์นิยมจาก `countTokens` จริง บวกขีดจำกัด `maxOutputTokens` ตามจำนวนหัวข้อ แยกกันระหว่าง chunk pass, consolidation pass, การลองใหม่เมื่อ JSON ผิดรูป และการรันบน fallback model นี่เป็นด่านปฏิบัติการแบบ best effort ไม่ใช่ hard billing cap เพราะ KV อาจเห็นเหตุการณ์ข้ามภูมิภาคช้าและ retry ภายในผู้ให้บริการยังใช้ทรัพยากรได้ |
+| **PDF ถูกจำกัดทั้งขนาดและปริมาณงาน** | ระบบตรวจขนาดไฟล์ 10 MB กับ 400 หน้าก่อนอ่าน และหยุดระหว่าง extraction เมื่อเกิน 300,000 ตัวอักษรหรือ text items พร้อมตัดลูปจัดบรรทัดแบบกำลังสองออก อย่างไรก็ตาม PDF.js ยังต้องสร้าง items ของหน้าปัจจุบันก่อนโค้ดนับได้ จึงเป็นการจำกัดความเสี่ยง ไม่ใช่คำรับรองว่า PDF ซับซ้อนหน้าเดียวจะไม่ทำให้แท็บสะดุดเลย |
 | **การส่งภาคผนวกต้องยืนยันอย่างชัดเจน** | เมื่อตรวจพบภาคผนวก ระบบหยุด **ก่อน** ยิง request แล้วถามผ่าน dialog ที่เข้าถึงได้ว่าจะส่งหรือไม่ |
 
 ## ภาพหน้าจอ
@@ -58,7 +58,7 @@ RubricLensAi รับข้อความ (พิมพ์ วาง หรื
 | **กำลังตรวจ** — บอกความคืบหน้าและยกเลิกได้<br>![กำลังตรวจ](docs/screenshots/03-analyzing.png) | **บนมือถือ** — ผลเดียวกัน ไม่มีการเลื่อนแนวนอน<br><img src="docs/screenshots/05-mobile.png" alt="หน้าจอมือถือ" width="260"> |
 
 สร้างภาพใหม่ทั้งหมดด้วย `npm run screenshots` ภาพถูกเก็บด้วย Playwright จาก production build จริง
-จึงไม่มีทางค้างเป็นภาพเก่าหลังแก้ UI
+แต่คำสั่งนี้ไม่ได้อยู่ใน `npm run verify` หรือ CI ภาพจึงอาจเก่าหลังแก้ UI จนกว่าผู้ดูแลจะสร้างใหม่และตรวจด้วยตา
 
 ## สถาปัตยกรรม
 
@@ -85,7 +85,7 @@ flowchart LR
 5. Worker ตรวจ schema ของคำตอบ จัดการกฎ N/A และ **คำนวณคะแนนด้วยโค้ด**
 6. Browser ตรวจ `apiVersion` และ schema แล้วคำนวณคะแนนซ้ำเพื่อยืนยันว่าตรงกับที่ Worker ส่งมา ก่อนแสดงผล
 
-**ไม่มีฐานข้อมูล โดยตั้งใจ** KV เก็บแค่ตัวนับ rate limit กับ idempotency อายุ 10 นาทีเท่านั้น
+**ไม่มีฐานข้อมูล โดยตั้งใจ** KV เก็บตัวนับการใช้งาน/งบ/คุณภาพ, health cache อายุสั้น และผล idempotency อายุ 10 นาที
 รายละเอียดทั้งหมด รวมถึงตาราง *"จุดเปราะ — แก้ตรงไหนแล้วเสี่ยงพังที่อื่น"* อยู่ใน
 [docs/architecture.md](docs/architecture.md)
 
@@ -102,23 +102,23 @@ flowchart LR
 
 ## ด่านคุณภาพ
 
-`npm run verify` รันชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้:
+`npm run verify` รันด่านคุณภาพชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้ (9 สิงหาคม 2026):
 
 | ตรวจอะไร | คำสั่ง | ผล |
 | --- | --- | ---: |
 | ตรวจโค้ดแบบสถิต | `npm run lint` | ผ่าน |
-| Unit + component | `npm run test` | **115 / 115** |
-| Worker bundle และ binding | `npm run worker:check` | ผ่าน |
-| ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | ผ่าน — ไม่มีระดับ high/critical<sup>†</sup> |
+| Unit + component + Worker | `npm run test` | **264 / 264** |
+| ชนิดข้อมูล Worker, generated bindings และ dry-run bundle | `npm run worker:check` | ผ่าน |
+| ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | **ไม่พบช่องโหว่ (0 รายการ)**<sup>†</sup> |
 | Production build | `npm run build` | ผ่าน |
-| E2E ข้ามเบราว์เซอร์ | `npm run test:e2e` | **72 / 72** |
+| E2E ข้ามเบราว์เซอร์ | `npm run test:e2e` | **96 / 96** |
 
 E2E รันบน artefact ที่ `npm run build` สร้าง แล้วเสิร์ฟด้วย `vite preview` (ไม่ใช่ dev server)
 ครอบคลุม Chromium, Mobile Chrome (Pixel 5), Firefox และ WebKit
 
-<sup>†</sup> ด่านนี้จะไม่ผ่านเฉพาะเมื่อเจอระดับ high หรือ critical ตอนนี้มีรายการระดับ moderate ค้างอยู่ 1 รายการ
-คือ ReDoS ใน CORS middleware ของ Hono ซึ่งติดมาทางอ้อมผ่าน `@google/genai` → `@modelcontextprotocol/sdk`
-และเป็นเส้นทางที่โปรเจกต์นี้ไม่ได้ใช้ บันทึกไว้ตรงนี้แทนการซ่อน ดูรายละเอียดใน
+<sup>†</sup> ด่านนี้ตรวจเฉพาะแพ็กเกจที่ส่งไปใช้งานจริง และจะไม่ผ่านเมื่อเจอระดับ high หรือ critical
+ส่วน `npm audit` ที่ตรวจรวมเครื่องมือพัฒนาด้วยก็รายงาน **0 vulnerabilities** หลังอัปเดต
+`wrangler` และ `nanoid` แบบระบุแพ็กเกจชัดเจน รายละเอียดอยู่ใน
 [docs/testing-report.md](docs/testing-report.md)
 
 ชุดทดสอบครอบคลุมเส้นทางที่ระบบพัง ไม่ใช่แค่เส้นทางปกติ: idempotency conflict, การแยก cache v0/v1,
@@ -128,6 +128,9 @@ rate limit, CORS, การ retry และ fallback ของ Gemini, การ
 > ตัวเลขข้างบนเป็นของ **ซอร์สชุดนี้** ส่วนสิ่งที่ deploy อยู่จริงบันทึกแยกไว้ที่
 > [docs/testing-report.md](docs/testing-report.md) พร้อมรายการสิ่งที่การทดสอบ **ไม่ได้** รับรอง เช่น
 > ความถูกต้องเชิงวิชาการ การลอกเลียนผลงาน และความตรงกับดุลพินิจของผู้ประเมินที่เป็นมนุษย์
+
+> ตารางนี้บันทึกผลตรวจในเครื่อง ส่วนผล CI และ production smoke เป็นหลักฐานคนละชุด
+> และต้องบันทึกต่อเมื่อได้รันจริงแล้วเท่านั้น
 
 ## วิธีรันในเครื่อง
 
@@ -145,14 +148,23 @@ npm run dev               # http://localhost:5173
 ถ้าจะทดสอบเส้นทางที่เรียก Worker จริง:
 
 ```bash
-npx wrangler secret put GEMINI_API_KEY
-npm run worker:dev        # รันคู่กับ npm run dev
+# ใน .env ตั้งค่าฝั่ง browser ที่ไม่ใช่ความลับ: VITE_USE_MOCK_ANALYSIS=false
+# สร้าง .dev.vars (Git ignore ไว้แล้ว) แล้วใส่ GEMINI_API_KEY=<คีย์สำหรับ local>
+npm run worker:dev        # http://127.0.0.1:8787; รันคู่กับ npm run dev
 ```
 
-ห้ามใส่ Gemini key ใน `VITE_*`, `.env`, source code หรือ commit history — ดู [SECURITY.md](SECURITY.md)
+Vite จะส่งคำขอ `/api` ที่มาจาก browser ไปยัง Worker ในเครื่อง ถ้าไม่ได้รันคำสั่ง Worker หน้าเว็บจะแจ้ง
+network error และจะไม่ถอยไปเรียก Worker production เอง
+
+ห้ามใส่ Gemini key ใน `VITE_*`, source code หรือ commit history ค่า local ให้อยู่เฉพาะใน `.dev.vars`
+ที่ Git ignore — ดู [SECURITY.md](SECURITY.md)
+
+> `npx wrangler secret put GEMINI_API_KEY` **ไม่ใช่คำสั่งตั้งค่า local** คำสั่งนี้สร้าง Worker version
+> และ deploy ขึ้น production ทันที ต้องได้รับอนุมัติการเปลี่ยน production ก่อนทุกครั้ง ดู
+> [deployment runbook](docs/deployment-runbook.md#3-secret-changes-only-when-needed-changes-production)
 
 ```bash
-npm run verify            # ทุกอย่างที่ CI รัน
+npm run verify            # ด่านคุณภาพชุดเดียวกับ CI
 npm run test              # ชุดเร็วระหว่างทำงาน
 npm run test:e2e          # build ใหม่แล้วรัน E2E ข้ามเบราว์เซอร์
 npm run screenshots       # สร้างภาพใน docs/screenshots ใหม่
@@ -164,16 +176,16 @@ npm run screenshots       # สร้างภาพใน docs/screenshots ใ�
 และตอบ v1 ให้ client ที่ส่ง `X-RubricLensAi-Api-Version` จึงไม่มีช่วงที่สองฝั่งเข้าใจสัญญาไม่ตรงกัน
 
 ```text
-Worker dry-run → Worker deploy → health/contract smoke → Pages deploy → browser smoke → TestSprite
+recovery/off-device checkpoint → local gates → Worker dry-run → secret change (ถ้าจำเป็นและได้รับอนุมัติ) → Worker deploy → health/contract smoke → Pages deploy → browser smoke → TestSprite
 ```
 
 `wrangler.jsonc` คือแหล่งความจริงเดียวของรายชื่อโมเดล, KV binding และ variable ที่ไม่ใช่ความลับ
-ส่วน `GEMINI_API_KEY` อยู่ใน Worker Secret เท่านั้น **การแก้ค่า production จากหน้า Cloudflare
+ส่วน production เก็บ `GEMINI_API_KEY` ใน Worker Secret เท่านั้น **การแก้ค่า production จากหน้า Cloudflare
 dashboard เคยทำให้โปรเจกต์นี้พังมาแล้ว** บันทึกไว้ใน [LESSONS.md](LESSONS.md)
 ขั้นตอนเต็มและวิธี rollback อยู่ที่ [docs/deployment-runbook.md](docs/deployment-runbook.md)
 
 ระบบมีตัวเฝ้าอัตโนมัติ (cron ทุกชั่วโมง) คอยถาม Google ว่า key ยังใช้ได้ไหม เพราะ key ที่ถูกลบแล้ว
-หน้าตาเหมือน key ที่ใช้ได้ทุกประการจนกว่าจะมีคนส่งเอกสารเข้ามาตรวจ ตัวเฝ้าบันทึกลง Workers Logs เสมอ
+หน้าตาเหมือน key ที่ใช้ได้ทุกประการจนกว่าจะมีคนส่งเอกสารเข้ามาตรวจ ถ้าตรวจไม่ผ่าน ระบบจะพยายามส่ง webhook และเขียน cache ก่อนทำให้ scheduled invocation ขึ้น failed ใน Cron Past Events แม้ไม่ได้ตั้ง webhook ส่วน Workers Logs ยังขึ้นกับอัตรา sampling ที่ตั้งไว้
 และถ้าตั้ง secret `ALERT_WEBHOOK_URL` ไว้ก็จะส่งข้อความไปที่ URL นั้นด้วย ถ้าอยากถามเองทันที:
 
 ```bash
@@ -193,7 +205,7 @@ scripts/screenshots/ สคริปต์เก็บภาพหน้าจ�
 public/              static assets, security headers, sitemap, หน้า 404 และ social preview
 docs/                สถาปัตยกรรม, ขั้นตอน deploy, รายงานการทดสอบ, ภาพหน้าจอ
 .testsprite/         config และ 11 scenario plans ของ TestSprite
-.github/workflows/   CI quality gate
+.github/             ด่าน CI + แบบฟอร์ม pull request ที่เจ้าของอ่านได้
 ```
 
 ## ความปลอดภัยและความเป็นส่วนตัว
@@ -202,8 +214,8 @@ docs/                สถาปัตยกรรม, ขั้นตอน de
 - Worker รับ JSON เท่านั้น จำกัดขนาด request ก่อน parse และตรวจด้วย Zod เป็นอย่างแรก
 - ไม่ log เนื้อหารายงาน และไม่เก็บไฟล์ที่อัปโหลด
 - ร่างของผู้ใช้อยู่ใน `sessionStorage` ของแท็บนั้นเท่านั้น
-- KV เก็บแค่ตัวนับ rate limit และผล idempotency อายุ 10 นาที ซึ่งอาจมีข้อความอ้างอิงสั้น ๆ ที่ AI ยกมา
-  แต่ไม่มีเอกสารต้นฉบับหรือไฟล์ที่อัปโหลด
+- KV เก็บตัวนับการใช้งาน/งบ/คุณภาพ, health cache อายุสั้น และผล idempotency อายุ 10 นาที เฉพาะผล
+  idempotency อาจมีข้อความอ้างอิงสั้น ๆ ที่ AI ยกมา แต่ไม่มีข้อมูลใดเก็บเอกสารต้นฉบับหรือไฟล์ที่อัปโหลด
 - ข้อความเอกสาร ผลจากโมเดล และเนื้อหาเกณฑ์ ถูกปฏิบัติเป็น untrusted input ในทุก prompt
 - ไม่มีคุกกี้ ไม่มีระบบเก็บสถิติ ไม่มีสคริปต์จากภายนอก จึงไม่ต้องมีแถบขอความยินยอม ส่วนคีย์ที่เก็บใน
   เบราว์เซอร์ 2 ตัวประกาศไว้ที่ `src/lib/browser-storage.ts` ซึ่งเป็นแหล่งเดียวกับที่หน้านโยบายอ่านไปแสดง

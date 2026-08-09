@@ -40,6 +40,14 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-brand-soft: var(--rl-primary-soft);
+  --color-brand-soft-foreground: var(--rl-brand-800);
+  --color-success-soft: var(--rl-met-bg);
+  --color-success-border: var(--rl-met-border);
+  --color-success-foreground: var(--rl-met-fg);
+  --color-danger-soft: var(--rl-danger-bg);
+  --color-danger-border: var(--rl-danger-border);
+  --color-danger-foreground: var(--rl-danger-fg);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -51,75 +59,112 @@
 
 * { box-sizing: border-box; }
 
-body { margin: 0; min-width: 320px; }
+body { margin: 0; }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Brand primitives are mirrored from docs/brand/tokens.css. Runtime CSS stays
+     self-contained while the shadcn variables below remain the public bridge. */
+  --rl-brand-50: oklch(0.970 0.012 250);
+  --rl-brand-100: oklch(0.940 0.025 250);
+  --rl-brand-200: oklch(0.880 0.045 250);
+  --rl-brand-300: oklch(0.790 0.070 250);
+  --rl-brand-400: oklch(0.670 0.095 250);
+  --rl-brand-500: oklch(0.570 0.110 250);
+  --rl-brand-600: oklch(0.480 0.105 250);
+  --rl-brand-700: oklch(0.400 0.090 250);
+  --rl-brand-800: oklch(0.320 0.070 250);
+  --rl-gray-0: oklch(1 0 0);
+  --rl-gray-50: oklch(0.985 0.002 250);
+  --rl-gray-100: oklch(0.965 0.004 250);
+  --rl-gray-200: oklch(0.925 0.006 250);
+  --rl-gray-300: oklch(0.870 0.008 250);
+  --rl-gray-400: oklch(0.660 0.010 250);
+  --rl-gray-500: oklch(0.560 0.012 250);
+  --rl-gray-600: oklch(0.480 0.012 250);
+  --rl-gray-700: oklch(0.390 0.010 250);
+  --rl-gray-800: oklch(0.280 0.008 250);
+  --rl-gray-900: oklch(0.200 0.006 250);
+  --rl-gray-950: oklch(0.140 0.005 250);
+  --rl-accent-100: oklch(0.945 0.030 195);
+  --rl-met-bg: oklch(0.955 0.030 155);
+  --rl-met-border: oklch(0.850 0.060 155);
+  --rl-met-fg: oklch(0.450 0.090 155);
+  --rl-danger-bg: oklch(0.960 0.030 25);
+  --rl-danger-border: oklch(0.850 0.080 25);
+  --rl-danger-fg: oklch(0.470 0.170 27);
+
+  --rl-bg: var(--rl-gray-0);
+  --rl-bg-subtle: var(--rl-gray-50);
+  --rl-bg-raised: var(--rl-gray-0);
+  --rl-text: var(--rl-gray-900);
+  --rl-text-muted: var(--rl-gray-600);
+  --rl-text-faint: var(--rl-gray-500);
+  --rl-text-onbrand: var(--rl-gray-0);
+  --rl-border: var(--rl-gray-200);
+  --rl-border-strong: var(--rl-gray-400);
+  --rl-primary: var(--rl-brand-600);
+  --rl-primary-hover: var(--rl-brand-700);
+  --rl-primary-active: var(--rl-brand-800);
+  --rl-primary-soft: var(--rl-brand-50);
+  --rl-focus: var(--rl-brand-500);
+
+  --background: var(--rl-bg);
+  --foreground: var(--rl-text);
+  --card: var(--rl-bg-raised);
+  --card-foreground: var(--rl-text);
+  --popover: var(--rl-bg-raised);
+  --popover-foreground: var(--rl-text);
+  --primary: var(--rl-primary);
+  --primary-foreground: var(--rl-text-onbrand);
+  --secondary: var(--rl-gray-100);
+  --secondary-foreground: var(--rl-text);
+  --muted: var(--rl-gray-100);
+  --muted-foreground: var(--rl-text-muted);
+  --accent: var(--rl-accent-100);
+  --accent-foreground: var(--rl-brand-800);
+  --destructive: var(--rl-danger-fg);
+  --border: var(--rl-border);
+  --input: var(--rl-border-strong);
+  --ring: var(--rl-focus);
+  --chart-1: var(--rl-met-fg);
+  --chart-2: var(--rl-brand-500);
+  --chart-3: var(--rl-brand-700);
+  --chart-4: var(--rl-gray-600);
+  --chart-5: var(--rl-gray-800);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: var(--rl-bg-subtle);
+  --sidebar-foreground: var(--rl-text);
+  --sidebar-primary: var(--rl-primary);
+  --sidebar-primary-foreground: var(--rl-text-onbrand);
+  --sidebar-accent: var(--rl-accent-100);
+  --sidebar-accent-foreground: var(--rl-brand-800);
+  --sidebar-border: var(--rl-border);
+  --sidebar-ring: var(--rl-focus);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Dark tokens are mapped for consistency, but Phase 2 does not add a theme
+     switch: the live application still has no user-facing dark-mode control. */
+  --rl-bg: var(--rl-gray-950);
+  --rl-bg-subtle: oklch(0.180 0.006 250);
+  --rl-bg-raised: var(--rl-gray-900);
+  --rl-text: var(--rl-gray-50);
+  --rl-text-muted: var(--rl-gray-300);
+  --rl-text-faint: var(--rl-gray-400);
+  --rl-text-onbrand: var(--rl-gray-950);
+  --rl-border: oklch(1 0 0 / 0.12);
+  --rl-border-strong: var(--rl-gray-500);
+  --rl-primary: var(--rl-brand-400);
+  --rl-primary-hover: var(--rl-brand-300);
+  --rl-primary-active: var(--rl-brand-200);
+  --rl-primary-soft: oklch(0.300 0.060 250);
+  --rl-focus: var(--rl-brand-300);
+  --rl-met-bg: oklch(0.280 0.050 155);
+  --rl-met-border: oklch(0.400 0.070 155);
+  --rl-met-fg: oklch(0.850 0.090 155);
+  --rl-danger-bg: oklch(0.280 0.060 25);
+  --rl-danger-border: oklch(0.420 0.100 25);
+  --rl-danger-fg: oklch(0.850 0.100 25);
 }
 
 @layer base {

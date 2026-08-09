@@ -36,3 +36,6 @@ worker-startup.cpuprofile
 *.njsproj
 *.sln
 *.sw?
+
+# Local working notes
+correct/

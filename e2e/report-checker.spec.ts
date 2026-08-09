@@ -5,7 +5,7 @@ import path from 'node:path'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 import { MAX_PDF_PAGES } from '../src/lib/document'
-import { stubAnalyze } from './support/api'
+import { ANALYZE_ROUTE, stubAnalyze } from './support/api'
 
 async function createThaiTextPdf() {
   const pdf = await PDFDocument.create()
@@ -76,6 +76,48 @@ test('mobile layout has no horizontal overflow and primary touch targets are lar
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
 })
 
+test('critical brand states remain usable without horizontal overflow at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 })
+  const expectNoHorizontalOverflow = async () => {
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  }
+  const expectLoadedMascot = async (kind: 'brand' | 'thinking' | 'offline') => {
+    const mascot = page.locator(`[data-mascot="${kind}"]`)
+    await expect(mascot).toBeVisible()
+    expect(await mascot.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  }
+
+  await expectLoadedMascot('brand')
+  await expectNoHorizontalOverflow()
+  for (const link of await page.getByRole('contentinfo').getByRole('link').all()) {
+    expect((await link.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)
+  }
+
+  await page.getByRole('button', { name: 'แก้ไขหัวข้อและน้ำหนัก' }).click()
+  await expectNoHorizontalOverflow()
+
+  await page.unroute(ANALYZE_ROUTE)
+  await stubAnalyze(page, { delayMs: 400 })
+  await page.getByLabel('ข้อความเอกสาร').fill('บทนำ\nรายงานภาษาไทยสำหรับตรวจความกว้างของหน้าจอในทุกสถานะสำคัญ')
+  await page.getByRole('button', { name: 'ตรวจรายงาน' }).click()
+  await expectLoadedMascot('thinking')
+  await expectNoHorizontalOverflow()
+
+  await expect(page.getByRole('region', { name: 'ผลวิเคราะห์' })).toBeVisible()
+  await expect(page.locator('[data-mascot]')).toHaveCount(0)
+  await expectNoHorizontalOverflow()
+
+  await page.getByRole('button', { name: 'แก้ไขแล้วตรวจใหม่' }).click()
+  await page.unroute(ANALYZE_ROUTE)
+  await stubAnalyze(page, {
+    status: 503,
+    body: JSON.stringify({ error: 'ระบบ AI ยังไม่พร้อม โปรดลองใหม่ภายหลัง', code: 'MODEL_UNAVAILABLE', retryable: true }),
+  })
+  await page.getByRole('button', { name: 'ตรวจรายงาน' }).click()
+  await expectLoadedMascot('offline')
+  await expectNoHorizontalOverflow()
+})
+
 test('a real Thai PDF text layer can be previewed and edited', async ({ page }) => {
   await page.getByLabel(/อัปโหลด PDF/).setInputFiles({ name: 'thai-report.pdf', mimeType: 'application/pdf', buffer: await createThaiTextPdf() })
   await expect(page.getByText(/อ่าน PDF ครบ 1 หน้าแล้ว/)).toBeVisible()
@@ -118,7 +160,11 @@ test('appendix exclusion is explicit in a confirmation dialog', async ({ page })
   await expect(page.getByText(/ยังไม่ได้ส่งเอกสาร/)).toBeVisible()
 
   await page.getByRole('button', { name: 'ตรวจรายงาน' }).click()
+  const analyzeRequest = page.waitForRequest(ANALYZE_ROUTE)
   await page.getByRole('button', { name: 'ยืนยันและส่งตรวจ' }).click()
+  const requestBody = (await analyzeRequest).postDataJSON()
+  expect(requestBody.reportText).toBe('บทนำ\nเนื้อหาหลักสำหรับประเมินโครงสร้างรายงาน')
+  expect(requestBody.reportText).not.toContain('ข้อมูลดิบที่ไม่ควรส่งไปวิเคราะห์')
   await expect(page.getByRole('region', { name: 'ผลวิเคราะห์' })).toBeVisible()
 })
 

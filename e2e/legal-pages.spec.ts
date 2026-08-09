@@ -33,6 +33,21 @@ test('หน้านโยบายเปิดตรงจาก URL ได้
   await expect(page.getByRole('heading', { name: 'RubricLensAi', level: 1 })).toBeVisible()
 })
 
+test('ผู้ใช้คีย์บอร์ดเลื่อนอ่านตารางนโยบายบนจอแคบได้', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/privacy')
+
+  const tableRegion = page.getByRole('region', { name: 'ตารางข้อมูลชั่วคราวบนเซิร์ฟเวอร์' })
+  await tableRegion.focus()
+  await expect(tableRegion).toBeFocused()
+  const before = await tableRegion.evaluate((element) => element.scrollLeft)
+  await tableRegion.press('ArrowRight')
+  await expect.poll(() => tableRegion.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before)
+
+  const backLink = page.getByRole('link', { name: '← กลับไปหน้าตรวจเอกสาร' })
+  expect((await backLink.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)
+})
+
 test('หน้ากฎหมายไม่เขียนอะไรลงที่เก็บข้อมูลของเบราว์เซอร์', async ({ page }) => {
   await page.goto('/terms')
 

@@ -64,7 +64,8 @@
 - `standard_prd.json` และ `testsprite_frontend_test_plan.json` เป็นข้อกำหนดกับแผนที่ TestSprite MCP สร้างจากพฤติกรรมของเว็บ
 - ไฟล์ `TC*.py` คือ browser flows ที่ commit ไว้ให้ TestSprite GitHub App ตรวจพบและนำไปรันเมื่อ Pull Request มี preview deployment
 - `fixtures/` เก็บเฉพาะ PDF สังเคราะห์ที่ไม่มีข้อมูลจริง เพื่อให้ flow อัปโหลดและอ่านข้อความทดสอบซ้ำได้
-- `testsprite-mcp-test-report.md` บันทึกผล cloud, ผลตรวจในเครื่อง และข้อจำกัดของ runner แยกจากกัน; ส่วน `testsprite_tests/tmp/` เป็น log/result เฉพาะเครื่องและถูก Git ละเว้น
+- `testsprite-mcp-test-report.md` บันทึกผล cloud, ผลตรวจในเครื่อง และข้อจำกัดของ runner แยกจากกัน
+- `tmp/test_results.json` เป็นสารบัญที่ TestSprite GitHub runner ใช้จับคู่ test plan กับไฟล์ `TC*.py` จึง commit เฉพาะไฟล์ที่ตัด URL, user/session metadata และค่าลับออกแล้ว; ไฟล์อื่นใน `testsprite_tests/tmp/` ยังถูก Git ละเว้น
 - GitHub App ทำหน้าที่รัน test เท่านั้น ไม่ได้สร้าง test และต้องรอ deployment status ของ Pull Request ก่อนเริ่มตามข้อกำหนดของ TestSprite
 
 ## Where the score is calculated

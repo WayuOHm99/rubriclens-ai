@@ -4,15 +4,18 @@
 
 ## TestSprite GitHub integration repair — 9 สิงหาคม 2026
 
-**สถานะระหว่างทำ: สร้างและตรวจชุด test ที่ commit ได้แล้ว; รอหลักฐานจาก Pull Request ว่า GitHub App ตรวจพบไฟล์**
+**สถานะ: แก้ “No tests detected” แล้ว — PR #3 แสดง `15 Tests detected, waiting for deployment`**
 
-- สาเหตุของ “No tests detected”: repository มีเพียง `.testsprite/` ซึ่งเป็นแผนของ CLI แต่ยังไม่มี `testsprite_tests/` ที่ TestSprite GitHub App กำหนดให้สร้างด้วย MCP และ commit เข้า repository
+- สาเหตุรอบแรกของ “No tests detected”: repository มีเพียง `.testsprite/` ซึ่งเป็นแผนของ CLI แต่ยังไม่มี `testsprite_tests/` ที่ TestSprite GitHub App กำหนดให้สร้างด้วย MCP และ commit เข้า repository
 - MCP สร้าง browser test 15 รายการจากแผน 27 รายการ ครอบ 7 กลุ่มพฤติกรรมหลัก; รอบแรก TestSprite cloud ผ่าน 11, failed 2 และ blocked 2
 - ตรวจ failure แล้วพบ test generation ผิด 2 จุด: TC005 สมมติว่ามีปุ่ม Save ทั้งที่เว็บบันทึกร่างอัตโนมัติเฉพาะแท็บ และ TC014 ไม่กดยืนยัน reset พร้อมมี assertion ที่ล้มตายตัว
 - เพิ่ม PDF สังเคราะห์แบบปกติและสองคอลัมน์ แล้วแก้ TC003, TC005, TC014 และ TC019 ตามข้อกำหนดจริง; browser run ในเครื่องผ่าน **4/4**
 - TestSprite cloud rerun ผ่าน TC005; TC003/TC019 ถูกบล็อกเพราะ MCP agent ไม่ได้รับ path ของ fixture ใน repository และ TC014 ถูก generator สร้าง assertion ใหม่ที่เอาคำแนะนำ rubric ถาวรไปตีความเป็นผลวิเคราะห์ค้าง จึงเก็บสคริปต์ที่ผ่าน local เป็น source สำหรับ GitHub suite
-- รายงานแยกรายกรณีอยู่ที่ `testsprite_tests/testsprite-mcp-test-report.md`; `testsprite_tests/tmp/` มี user/run metadata จึงถูก Git ละเว้น
+- รายงานแยกรายกรณีอยู่ที่ `testsprite_tests/testsprite-mcp-test-report.md`; ไฟล์ชั่วคราวที่มี user/run metadata ยังถูก Git ละเว้น
 - Full verification หลังจัดชุด test: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, lint/Worker check/build ผ่าน และ production dependency audit พบ 0 vulnerabilities
+- PR [#2 Fix TestSprite GitHub test detection](https://github.com/WayuOHm99/rubriclens-ai/pull/2) ถูก merge แบบปกติเข้า `main` ที่ commit `699c621`; CI หลักและ Worker build ผ่าน ส่วน TestSprite Pre-Check เดิมยังรายงาน “No tests detected” เพราะยังไม่มีสารบัญ `tmp/test_results.json`
+- PR #3 พิสูจน์ว่าการมี `TC*.py` บน `main` อย่างเดียวยังไม่พอ: source ของ TestSprite `run-action@v1` อ่าน `testsprite_tests/tmp/test_results.json` เพื่อจับคู่ชื่อในแผนกับไฟล์ Python ก่อนส่งไปรัน จึงเพิ่มสารบัญแบบตัด URL, user/session metadata และค่าลับออก โดยยังละเว้นไฟล์ `tmp/` อื่นทั้งหมด
+- หลัง push สารบัญดังกล่าว TestSprite Pre-Check บน PR [#3 Verify TestSprite detection from main](https://github.com/WayuOHm99/rubriclens-ai/pull/3) เปลี่ยนจาก `No tests detected` เป็น `15 Tests detected, waiting for deployment`; ขั้นตรวจพบ test จึงผ่านแล้ว
 - ยังไม่แก้ application code, Worker, scoring, API contract, deployment หรือ library ใดในงานนี้
 
 ## Favicon cache fix — 9 สิงหาคม 2026

@@ -1,0 +1,152 @@
+[
+  {
+    "testId": "TC001",
+    "title": "TC001-Analyze pasted report with the matching rubric",
+    "description": "This verifies that a visitor can paste report text, choose the correct document type, and receive a completed analysis with weighted scoring and criterion-level feedback.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC003",
+    "title": "TC003-Analyze an uploaded PDF and review extracted text before scoring",
+    "description": "This verifies that a user can upload a PDF, review the extracted readable text, and successfully analyze it after confirming the document content.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC005",
+    "title": "TC005-Keep advanced rubric changes with the current tab draft",
+    "description": "This verifies that rubric edits are stored automatically with a non-empty document draft in the current browser tab and restored after a reload.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC007",
+    "title": "TC007-See the rubric update when the document type changes",
+    "description": "This verifies that switching document types updates the default rubric and document-specific guidance for the selected template.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC009",
+    "title": "TC009-Mark a rubric criterion not applicable and analyze successfully",
+    "description": "This verifies that a user can mark a rubric criterion as not applicable and still complete analysis with the adjusted rubric.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC010",
+    "title": "TC010-Add and remove rubric criteria",
+    "description": "This verifies that a user can expand the rubric by adding a criterion and then remove an unneeded criterion before analysis.",
+    "priority": "High",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC012",
+    "title": "TC012-Handle appendix exclusion before analysis",
+    "description": "This verifies that when an appendix is detected, a user can choose to exclude it and continue with the adjusted document before analysis.",
+    "priority": "Medium",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC013",
+    "title": "TC013-Replace the current document",
+    "description": "This verifies that a visitor can remove an existing document and start over with a new one from the analyzer.",
+    "priority": "Medium",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC014",
+    "title": "TC014-Clear a drafted analysis and return to a blank state",
+    "description": "This verifies that a user can reset the current document and analysis so they can start a fresh evaluation.",
+    "priority": "Medium",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC015",
+    "title": "TC015-Keep appendix text in the document and analyze",
+    "description": "This verifies that a user can decline appendix exclusion and continue editing the full document before analysis.",
+    "priority": "Medium",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC017",
+    "title": "TC017-Validate rubric errors and continue editing",
+    "description": "This verifies that invalid rubric input shows validation feedback and that correcting the rubric clears the issue so editing can continue.",
+    "priority": "Low",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC018",
+    "title": "TC018-Fix missing input validation and complete analysis",
+    "description": "This verifies that a user sees validation guidance when the document or rubric is incomplete, corrects the issue, and then completes analysis successfully.",
+    "priority": "Low",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC019",
+    "title": "TC019-Review extraction quality for a multi-column PDF before analysis",
+    "description": "This verifies that a user can inspect extracted text from a multi-column PDF and confirm the text is usable before running analysis.",
+    "priority": "Low",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC020",
+    "title": "TC020-Review legal information and return to the analyzer",
+    "description": "This verifies that a visitor can open the privacy and terms pages from the app and return to the analyzer without needing an account.",
+    "priority": "Low",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  },
+  {
+    "testId": "TC021",
+    "title": "TC021-Read the privacy policy from the dedicated page",
+    "description": "This verifies that a visitor can open the privacy page and read the storage and data-processing disclosures without signing in.",
+    "priority": "Low",
+    "testStatus": "PASSED",
+    "testError": "",
+    "testType": "FRONTEND",
+    "testVisualization": ""
+  }
+]

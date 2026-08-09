@@ -1,11 +1,11 @@
 # เฟส 2 — บันทึกการเชื่อมระบบแบรนด์เข้ากับเว็บจริง
 
-> **สถานะ:** implemented และตรวจในเครื่องแล้ว รอ owner review
-> **อัปเดตล่าสุด:** 8 สิงหาคม 2569
-> **หลักฐาน remote/production:** ไม่รวมอยู่ในบันทึกนี้; ณ checkpoint วันที่ด้านบนยังไม่ได้ deploy และต้องดูผลล่าสุดที่ `docs/testing-report.md`
+> **สถานะ:** implemented, ผ่าน local/remote CI และ deploy production แล้ว; PR #1 ยังเป็น Draft รอ owner review/merge
+> **อัปเดตล่าสุด:** 9 สิงหาคม 2569
+> **หลักฐาน remote/production:** ดู deployment ID, smoke test, TestSprite และ rollback point ล่าสุดที่ `docs/testing-report.md`
 > **เฟส 1:** `563716c` — สร้างระบบแบรนด์ใน `docs/brand/` โดยยังไม่แตะเว็บ
 
-เอกสารนี้เริ่มต้นเป็นแผนก่อนลงมือ ตอนนี้ปรับเป็น **implementation record** เพื่อบอกว่าสิ่งใดมีอยู่ในโค้ดจริง สิ่งใดยังไม่ทำ และต้องดูแลต่ออย่างไร โดยไม่ตีความคำว่า “ตรวจในเครื่องแล้ว” ว่า “ขึ้น production แล้ว”
+เอกสารนี้เริ่มต้นเป็นแผนก่อนลงมือ ตอนนี้ปรับเป็น **implementation record** เพื่อบอกว่าสิ่งใดมีอยู่ในโค้ดจริง สิ่งใดยังไม่ทำ และต้องดูแลต่ออย่างไร หลักฐานว่า production ใช้ source รุ่นใดให้ยึด `docs/testing-report.md`
 
 ---
 
@@ -214,12 +214,12 @@ python docs/brand/og/render-og.py
 
 ## 7. สิ่งที่ยังรอภายนอกหรือแยกเป็นงานอนาคต
 
-- owner review และ remote CI หลัง push
-- deploy Worker/Pages และ production smoke test; งานนี้ยังไม่ได้ทำ
+- owner review และ merge Draft PR #1; remote CI หลักผ่านแล้ว และ production deploy จาก source commit ที่ระบุใน `docs/testing-report.md`
 - custom-domain cutover เมื่อ DNS พร้อม (จึงยังไม่เปลี่ยน canonical URL)
 - เปลี่ยนอีเมลติดต่อเป็น domain email หลังตั้ง Email Routing จริง
 - ตรวจว่าการ abort ฝั่งผู้ให้บริการลด quota/cost ได้มากเพียงใดจาก telemetry จริง
-- TestSprite สำหรับ build ใหม่นี้เมื่อมี URL ที่เข้าถึงได้; CLI ไม่ควรถูกชี้ไป production เก่าแล้วนับเป็นหลักฐานของ local code
+- TestSprite รันกับ build production ใหม่แล้ว; 11/14 ผ่าน และ test มือถือ 3 รายการถูก runner บล็อกเพราะจำลอง viewport 390×844 ไม่ได้ โดยมี Playwright mobile E2E ผ่านเป็นหลักฐานทดแทน
+- ทดสอบส่งและรับอีเมลจริงจากลิงก์ติดต่อด้วยกล่องอีเมลของเจ้าของ
 - พิจารณาลบ `docs/brand/logo/_retired/` เฉพาะเมื่อเจ้าของยืนยันว่าไม่ต้องใช้ย้อนกลับ; ไม่ใช่ blocker
 
 หลักฐาน test, audit, build, E2E และสถานะ local/production ล่าสุดต้องดูที่ `docs/testing-report.md` ไม่ควรคัดลอกตัวเลขมาค้างไว้ในเอกสารนี้หลายจุด

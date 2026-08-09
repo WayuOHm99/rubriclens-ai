@@ -2,6 +2,65 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
+## Production verification — 9 สิงหาคม 2026 (Phase 2)
+
+**สถานะ: production ใช้งานได้; เส้นทางหลักผ่านจริง และมี TestSprite 3 รายการถูกบล็อกด้วยข้อจำกัดของ runner มือถือ**
+
+- Source commit: `e7f4ff4e07aaad0f31c55255239af356c3a0d90e` บน branch `phase2-brand-integration`
+- Draft PR: [#1 Phase 2 brand integration and reliability safeguards](https://github.com/WayuOHm99/rubriclens-ai/pull/1)
+- GitHub Actions หลัก: ผ่าน — lint, unit, Worker, audit, build และ production-preview E2E ใช้เวลา 2 นาที 57 วินาที
+- Worker version ใหม่: `c3fa8f5f-8664-4d0d-a5b2-49f89a1bcbb9`
+- Worker version ก่อน deploy สำหรับ rollback: `97142c17-3011-4804-87da-d3ff637a0e35`
+- Pages deployment ใหม่: `8c96946a-6c59-4fd3-8c17-4831364b5e85` (`https://8c96946a.rubriclensai.pages.dev`)
+- Pages deployment ก่อน deploy สำหรับ rollback: `b376c803-3efd-48e3-b530-7cd326a8c204`
+
+### หลักฐานก่อน deploy
+
+```text
+npm ci
+added 593 packages, and audited 594 packages
+found 0 vulnerabilities
+
+npm run verify
+No forbidden test modifiers found in 45 files.
+Test Files  13 passed (13)
+Tests       264 passed (264)
+Worker generated bindings are current.
+Worker strict TypeScript check passed.
+Worker dry-run bundle passed.
+found 0 vulnerabilities
+✓ 2003 modules transformed.
+96 passed (40.8s)
+exit code 0
+```
+
+### Production smoke test
+
+| ตรวจอะไร | ผล |
+| --- | --- |
+| Worker health 10 ครั้งหลัง deploy | **10/10 ผ่าน** — HTTP 200, `status ok`, API v1, รองรับ v0/v1, AI และ rate limit พร้อม |
+| Worker ตรวจการเชื่อมต่อ Gemini | **ผ่าน** — HTTP 200, `aiReachable true`, `aiCheckCode OK` |
+| Method guard | **ผ่าน** — `GET /api/analyze` คืน 405 |
+| CORS หรือกฎว่าเว็บใดเรียก API ได้ | **ผ่าน** — origin `https://rubriclensai.pages.dev`, method `POST, OPTIONS` |
+| API เก่า v0 | **ผ่าน** — HTTP 200 และคืนเฉพาะรูปแบบ v0 โดยไม่มี field ของ v1 รั่วมา |
+| Browser เส้นทางหลัก | **ผ่าน** — เลือกรายงานวิจัย, ใส่ข้อความสังเคราะห์, ได้ผล AI 24%, แสดงหลักฐาน/สิ่งที่ขาด/คำแนะนำครบ |
+| Browser console | **ผ่าน** — 0 errors, 0 warnings บนเส้นทางหลัก |
+| `/privacy` และ `/terms` | **ผ่าน** — ชื่อหน้าและหัวข้อถูกต้อง |
+| `/cookies` | **ผ่าน** — คืน HTTP 404 จริงพร้อมหน้า “ไม่พบหน้าที่คุณเปิด” |
+
+ยังไม่ได้ส่งอีเมลจริงจากลิงก์ `mailto:` เพราะ session นี้ไม่มีสิทธิ์เข้ากล่องอีเมลเพื่อยืนยันการส่งและรับ จึงไม่อ้างว่าตรวจการส่งอีเมลแล้ว
+
+### TestSprite บน production รุ่นนี้
+
+TestSprite CLI `0.4.0` รัน test หน้าเว็บเดิมครบ 14 รายการกับ `https://rubriclensai.pages.dev`:
+
+- **ผ่าน 11 รายการ** — รวมหน้าแรก, empty state, ล้างร่าง, validation, คำเตือนข้อความสั้น, ภาคผนวก, privacy, เปลี่ยนประเภท/เกณฑ์, advanced rubric และส่งข้อความให้ AI จริง
+- **ถูกบล็อก 3 รายการ** — เป็น test มือถือทั้งหมด; runner ระบุเองว่าไม่สามารถจำลอง viewport 390×844 ได้ และให้ `recommendedFixTarget: null` จึงไม่ใช่หลักฐานว่า application ล้มเหลว
+- Artifact ที่ตรวจแล้ว: run `dc5a0f80-2907-4412-aeeb-f8d467ab8d8d`, `34c1c882-30db-4cec-a097-9795c5576a67` และ `d835737f-7daf-4315-aaaa-992620f96b2f`; เก็บไว้ใต้ `.testsprite/runs/` ซึ่ง Git ละเว้น
+- ความเสี่ยงมือถือที่ TestSprite ตรวจไม่ได้ถูกตรวจแยกด้วย Playwright แล้ว: **96/96 E2E ผ่าน** รวม Mobile Chrome, Firefox และ WebKit
+
+[เปิด TestSprite project dashboard](https://www.testsprite.com/dashboard/tests/c76aad7a-c7f9-44a8-a888-a842a4cd386e)
+
 ## Local verification
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**

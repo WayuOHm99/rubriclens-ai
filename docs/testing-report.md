@@ -2,6 +2,14 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
+## Favicon cache fix — 9 สิงหาคม 2026
+
+- สาเหตุ: production มี SVG ของ RubricLensAi ถูกต้องแล้ว แต่ HTML ยังใช้ URL `/favicon.svg` เดิม ทำให้เบราว์เซอร์บางเครื่องแสดง favicon เก่าที่จำไว้
+- RED: `npm test -- vite.config.test.ts` — **1 failed, 2 passed** เพราะ `index.html` ยังไม่มี URL ที่ระบุรุ่น
+- GREEN: `npm test -- vite.config.test.ts` — **3/3 passed** หลังหน้าแรก, privacy, terms และ 404 ใช้ `/favicon.svg?v=rubriclens-1` ตรงกัน
+- Full verification: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, audit พบ 0 vulnerabilities
+- Production deployment และ browser smoke ของรอบนี้จะบันทึกเพิ่มหลัง deploy เพื่อไม่อ้างผลก่อนขึ้นจริง
+
 ## Production verification — 9 สิงหาคม 2026 (Phase 2)
 
 **สถานะ: production ใช้งานได้; เส้นทางหลักผ่านจริง และมี TestSprite 3 รายการถูกบล็อกด้วยข้อจำกัดของ runner มือถือ**

@@ -221,7 +221,7 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 ### Brand asset flow and mascot semantics
 
-แหล่งความจริงของมาสคอตคือ `docs/brand/logo/build-mascots.py` เมื่อรันแล้วจะสร้างชุด SVG เอกสารใน `docs/brand/logo/`, คัดลอกสามสถานะที่เว็บใช้ไป `src/assets/brand/` และคัดลอก favicon ไป `public/favicon.svg` ส่วน `docs/brand/og/render-og.py` สร้างภาพแชร์และคัดลอกผลไป `public/og.png` หลัง render สำเร็จ
+แหล่งความจริงของมาสคอตคือ `docs/brand/logo/build-mascots.py` เมื่อรันแล้วจะสร้างชุด SVG เอกสารใน `docs/brand/logo/`, คัดลอกสามสถานะที่เว็บใช้ไป `src/assets/brand/` และคัดลอก favicon ไป `public/favicon.svg` ส่วน `docs/brand/og/render-og.py` สร้างภาพแชร์และคัดลอกผลไป `public/og.png` หลัง render สำเร็จ HTML ทุกหน้าอ้าง favicon ด้วย query version เดียวกัน (`/favicon.svg?v=rubriclens-1`) เพื่อให้เบราว์เซอร์เลิกใช้ favicon เก่าที่จำจาก URL เดิม; เมื่อเปลี่ยนภาพ favicon ในอนาคตต้องเพิ่ม version และแก้ทั้งสี่หน้า โดยมี `vite.config.test.ts` คุมไม่ให้หลุดจากกัน
 
 เว็บใช้มาสคอตตามความหมายของ state เท่านั้น:
 

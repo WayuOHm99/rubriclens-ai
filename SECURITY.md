@@ -7,16 +7,16 @@ observed. If that address bounces, open an issue at
 [github.com/WayuOHm99/rubriclens-ai/issues](https://github.com/WayuOHm99/rubriclens-ai/issues) with
 no exploit details and ask for a private channel. This is a personal project with no SLA; expect a
 best-effort reply. Please do not run load tests or automated scanners against the live deployment —
-its budget guards are a cost cap, not a defence, and exhausting them takes the site down for
+its budget guards are a low-volume abuse guard, not a defence or hard cost cap, and exhausting them takes the site down for
 everyone.
 
-The contact address is defined once in `src/lib/site-info.ts` and rendered on `/privacy` and
-`/terms`; keep all three in step.
+The contact address is defined in `src/lib/site-info.ts` for `/privacy` and `/terms`, and repeated
+above for readers of this file; keep both locations in step.
 
 ## Notes
 
 - Never commit Gemini API keys, Cloudflare API tokens, `.env`, or `.dev.vars` files.
-- Configure `GEMINI_API_KEY` only as a Cloudflare Worker Secret after deployment is approved.
+- For local development, keep `GEMINI_API_KEY` only in the gitignored `.dev.vars`; after production deployment is approved, configure it only as a Cloudflare Worker Secret.
 - The Worker accepts JSON only, limits request bytes before parsing, validates the body with Zod, and never logs report text.
 - Rate limits use both Cloudflare-provided client IP and an anonymous browser token; the browser keeps only a UUID v4-shaped token and replaces malformed stored values. This token is caller-controlled and is **not** an authenticated identity.
 - CORS limits which browser origins can read responses, but it is **not** API authentication or an ACL: a direct HTTP client can still call this intentionally public anonymous API. Requiring login, Turnstile/WAF, or another access-control policy is a product and Cloudflare-account decision, not something the anonymous token can safely imitate.

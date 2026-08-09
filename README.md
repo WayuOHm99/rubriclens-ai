@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-198%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-255%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -60,7 +60,8 @@ The interesting parts of this project are not the CRUD; they are the failure pat
 | **In progress** — estimated steps, cancellable<br>![Analyzing](docs/screenshots/03-analyzing.png) | **Phone** — same result, no horizontal scroll<br><img src="docs/screenshots/05-mobile.png" alt="Mobile layout" width="260"> |
 
 Regenerate them all with `npm run screenshots` — they are captured by Playwright from the real
-production build, so they cannot silently go stale after a UI change.
+production build. This command is not part of `npm run verify` or CI, so screenshots can become
+stale after a UI change until a maintainer regenerates and reviews them.
 
 ## Architecture
 
@@ -104,12 +105,12 @@ cache, and 10-minute idempotency records. Full notes, including the *"which file
 
 ## Quality gates
 
-`npm run verify` runs the same quality gates as CI. Latest local run on this source (8 August 2026):
+`npm run verify` runs the same quality gates as CI. Latest local run on this source (9 August 2026):
 
 | Check | Command | Result |
 | --- | --- | ---: |
 | Static analysis | `npm run lint` | passed |
-| Unit + component | `npm run test` | **198 / 198** |
+| Unit + component + Worker | `npm run test` | **255 / 255** |
 | Worker types, generated bindings and dry-run bundle | `npm run worker:check` | passed |
 | Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities**<sup>†</sup> |
 | Production build | `npm run build` | passed |
@@ -181,7 +182,7 @@ Worker dry-run → Worker deploy → health/contract smoke → Pages deploy → 
 ```
 
 `wrangler.jsonc` is the single source of truth for the model list, KV binding and non-secret vars.
-`GEMINI_API_KEY` lives only in a Worker Secret. Editing production config in the Cloudflare dashboard
+In production, `GEMINI_API_KEY` lives only in a Worker Secret. Editing production config in the Cloudflare dashboard
 has broken this project before — that incident is written up in [LESSONS.md](LESSONS.md). Full steps
 and rollback: [docs/deployment-runbook.md](docs/deployment-runbook.md).
 

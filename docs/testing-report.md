@@ -6,9 +6,9 @@
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**
 
-### รอบล่าสุด — 9 สิงหาคม 2026 (deadline, counters, retry, monitoring และ PDF performance; local only)
+### รอบล่าสุด — 9 สิงหาคม 2026 (privacy, mock safety, monitoring, budgets และ Worker type gate; local only)
 
-รอบนี้เริ่มจาก `02d6cb2` และตรวจ code commits `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `fae793d`
+รอบนี้เริ่มจาก `02d6cb2` และตรวจถึง commit `30de2cf` รวมการแก้ก่อนหน้า `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `99f546d`, `fae793d`, `9716fe7`, `7eefee0`, `f2621da`, `5a7d619` และ `3f3acdf`
 บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ
 production** ผลทั้งหมดด้านล่างจึงรับรอง source/production-preview ในเครื่องเท่านั้น
 
@@ -16,10 +16,10 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 | --- | --- | --- |
 | Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
 | Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
-| ทั้งชุด | `npm run verify` | **exit code 0** — 114.4 วินาที |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 95.7 วินาที |
 | Static analysis | `npm run lint` | passed |
-| Unit/component/Worker | `npm run test` | **248/248 passed** ใน 10 test files |
-| Worker bundle and bindings | `npm run worker:check` | passed — dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
+| Unit/component/Worker | `npm run test` | **255/255 passed** ใน 10 test files |
+| Worker types, generated bindings and bundle | `npm run worker:check` | passed — generated binding check, strict TypeScript และ dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
 | Production dependency audit | `npm audit --omit=dev --audit-level=high` | **exit code 0 — found 0 vulnerabilities** |
 | Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
 | Production build | `npm run build` (ใน `verify`) | passed — transformed 2,002 modules |
@@ -37,9 +37,14 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 
 | ปัญหาที่จำลองก่อนแก้ | RED ก่อน production patch | GREEN ล่าสุด |
 | --- | --- | --- |
-| SDK promise ไม่จบหลัง aggregate deadline/cancel | Worker 4 failed / 65 | Worker รวมปัจจุบัน **73/73 passed** |
-| SDK promise ไม่จบหลังเพดานย่อย 10/60 วินาที | Worker 2 failed / 73 | Worker **73/73 passed** โดยยังเริ่ม fallback เดิมได้เมื่อ aggregate deadline ยังเหลือ |
-| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 248/248 |
+| ยืนยันตัดภาคผนวกแต่ request ยังส่งข้อความดิบทั้งฉบับ | App 1 failed; E2E request-body guard เพิ่มแล้ว | App **47/47 passed** และ E2E รวม **96/96 passed** |
+| ค่า mock ที่พิมพ์ผิดเปิดผลตัวอย่างเหมือนผล AI | App focused 5 failed / 5 | App **47/47 passed** |
+| Cron เห็น Gemini outage แต่ run ยังสำเร็จ | Worker 1 failed / 74 | Worker รวมปัจจุบัน **74/74 passed** |
+| daily request budget อยู่หลัง provider `countTokens` | Worker assertion ได้ 2 calls แทน 1 | Worker **74/74 passed** |
+| Worker ไม่มี strict compiler/binding drift gate และใช้ thinking level ที่ SDK ไม่รองรับ | TypeScript RED; Worker follow-up 35 failed แล้วเหลือ 1 assertion ที่รับรองค่าเดิมผิด | Worker type/binding/dry-run ผ่าน และ Worker **74/74 passed** ด้วย `ThinkingLevel.LOW` |
+| SDK promise ไม่จบหลัง aggregate deadline/cancel | Worker 4 failed / 65 | Worker รวมปัจจุบัน **74/74 passed** |
+| SDK promise ไม่จบหลังเพดานย่อย 10/60 วินาที | Worker 2 failed / 73 | Worker **74/74 passed** โดยยังเริ่ม fallback เดิมได้เมื่อ aggregate deadline ยังเหลือ |
+| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 255/255 |
 | anonymous token ที่ non-empty แต่รูปแบบเสีย | App 3 failed / 41 | App **41/41 passed** ใน focused run นั้น |
 | stale-null KV, cron cache failure, webhook non-2xx | Worker 7 failed / 70 | Worker **70/70 passed** ก่อนเพิ่ม health deadline |
 | health SDK promise ไม่จบหลัง 5 วินาที | Worker 1 failed / 71 | Worker **71/71 passed** |

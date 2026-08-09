@@ -66,7 +66,7 @@
 | Real API (`/api/analyze`) | **Cloudflare Worker** ด้วย `shared/scoring.ts` แล้วส่งค่าที่คำนวณแล้วกลับมา |
 | Mock analysis ใน browser (`createMockAnalysis`) | **Browser** ด้วย `shared/scoring.ts` ตัวเดียวกัน ใช้เฉพาะตอน dev/mock เท่านั้น |
 
-Browser ไม่ได้คำนวณคะแนนซ้ำจากผล API จริง แต่ตรวจ schema และ `apiVersion` ก่อนแสดงผล ส่วนการจัดลำดับ “สิ่งที่ควรแก้ก่อนส่ง” คำนวณใน browser จากหัวข้อที่เกี่ยวข้องเท่านั้น
+Browser ตรวจ schema และ `apiVersion` แล้วคำนวณ `overallScore` ซ้ำจากหัวข้อที่ Worker ส่งกลับด้วย `shared/scoring.ts` เพื่อปฏิเสธผลที่คะแนนไม่สอดคล้องกันก่อนแสดง ส่วนการจัดลำดับ “สิ่งที่ควรแก้ก่อนส่ง” ก็คำนวณใน browser จากหัวข้อที่เกี่ยวข้องเท่านั้น Worker ยังคงเป็นผู้คำนวณคะแนนฝั่ง API และทั้งสองฝั่งใช้สูตรไฟล์เดียวกัน
 
 `VITE_USE_MOCK_ANALYSIS` รับเฉพาะ `true` หรือ `false` แบบตรงตัว: ถ้าไม่ตั้งค่า local development ใช้ mock และ production ใช้ Worker ตามค่าเริ่มต้น แต่ค่าที่ไม่รู้จักจะปิดปุ่มตรวจพร้อมแจ้ง configuration error เพื่อไม่ให้ค่าที่พิมพ์ผิดแสดงผลตัวอย่างเหมือนผล AI ปุ่ม คำอธิบายระหว่างรอ และหัวผลลัพธ์ระบุโหมดที่ใช้อยู่เสมอ
 

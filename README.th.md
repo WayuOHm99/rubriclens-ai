@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-198%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-255%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -58,7 +58,7 @@ RubricLensAi รับข้อความ (พิมพ์ วาง หรื
 | **กำลังตรวจ** — บอกความคืบหน้าและยกเลิกได้<br>![กำลังตรวจ](docs/screenshots/03-analyzing.png) | **บนมือถือ** — ผลเดียวกัน ไม่มีการเลื่อนแนวนอน<br><img src="docs/screenshots/05-mobile.png" alt="หน้าจอมือถือ" width="260"> |
 
 สร้างภาพใหม่ทั้งหมดด้วย `npm run screenshots` ภาพถูกเก็บด้วย Playwright จาก production build จริง
-จึงไม่มีทางค้างเป็นภาพเก่าหลังแก้ UI
+แต่คำสั่งนี้ไม่ได้อยู่ใน `npm run verify` หรือ CI ภาพจึงอาจเก่าหลังแก้ UI จนกว่าผู้ดูแลจะสร้างใหม่และตรวจด้วยตา
 
 ## สถาปัตยกรรม
 
@@ -102,12 +102,12 @@ flowchart LR
 
 ## ด่านคุณภาพ
 
-`npm run verify` รันด่านคุณภาพชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้ (8 สิงหาคม 2026):
+`npm run verify` รันด่านคุณภาพชุดเดียวกับ CI ผลล่าสุดบนซอร์สชุดนี้ (9 สิงหาคม 2026):
 
 | ตรวจอะไร | คำสั่ง | ผล |
 | --- | --- | ---: |
 | ตรวจโค้ดแบบสถิต | `npm run lint` | ผ่าน |
-| Unit + component | `npm run test` | **198 / 198** |
+| Unit + component + Worker | `npm run test` | **255 / 255** |
 | ชนิดข้อมูล Worker, generated bindings และ dry-run bundle | `npm run worker:check` | ผ่าน |
 | ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | **ไม่พบช่องโหว่ (0 รายการ)**<sup>†</sup> |
 | Production build | `npm run build` | ผ่าน |
@@ -176,7 +176,7 @@ recovery/off-device checkpoint → local gates → Worker dry-run → secret cha
 ```
 
 `wrangler.jsonc` คือแหล่งความจริงเดียวของรายชื่อโมเดล, KV binding และ variable ที่ไม่ใช่ความลับ
-ส่วน `GEMINI_API_KEY` อยู่ใน Worker Secret เท่านั้น **การแก้ค่า production จากหน้า Cloudflare
+ส่วน production เก็บ `GEMINI_API_KEY` ใน Worker Secret เท่านั้น **การแก้ค่า production จากหน้า Cloudflare
 dashboard เคยทำให้โปรเจกต์นี้พังมาแล้ว** บันทึกไว้ใน [LESSONS.md](LESSONS.md)
 ขั้นตอนเต็มและวิธี rollback อยู่ที่ [docs/deployment-runbook.md](docs/deployment-runbook.md)
 

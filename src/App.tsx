@@ -30,9 +30,14 @@ import { DOCUMENT_TYPES, documentTypeDefinitions, getDocumentTypeDefinition, typ
 
 const PRODUCTION_API_BASE_URL = 'https://rubriclensai-api.oomzazato01.workers.dev/api'
 
-function usesMockAnalysis() {
+type AnalysisMode = 'mock' | 'worker' | 'invalid'
+
+function getAnalysisMode(): AnalysisMode {
   const configured = import.meta.env.VITE_USE_MOCK_ANALYSIS
-  return configured ? configured !== 'false' : import.meta.env.DEV
+  if (!configured) return import.meta.env.DEV ? 'mock' : 'worker'
+  if (configured === 'true') return 'mock'
+  if (configured === 'false') return 'worker'
+  return 'invalid'
 }
 
 function getApiBaseUrl() {
@@ -108,7 +113,8 @@ const failureStateLabels: Record<AnalysisFailureCategory, string> = {
   unexpected: 'หน้าเว็บขัดข้อง',
 }
 
-const analysisSteps = ['ตรวจขนาดเอกสาร', 'เตรียมเกณฑ์การตรวจ', 'ส่งข้อมูลผ่านระบบที่ปลอดภัย', 'AI อ่านเอกสาร', 'ตรวจความครบถ้วนของคำตอบ', 'รวมผลแต่ละหัวข้อ', 'คำนวณคะแนนรวม']
+const workerAnalysisSteps = ['ตรวจขนาดเอกสาร', 'เตรียมเกณฑ์การตรวจ', 'ส่งข้อมูลผ่านระบบที่ปลอดภัย', 'AI อ่านเอกสาร', 'ตรวจความครบถ้วนของคำตอบ', 'รวมผลแต่ละหัวข้อ', 'คำนวณคะแนนรวม']
+const mockAnalysisSteps = ['ตรวจขนาดเอกสาร', 'เตรียมเกณฑ์การตรวจ', 'สร้างข้อมูลตัวอย่างในเบราว์เซอร์', 'ตรวจความครบถ้วนของผลตัวอย่าง', 'คำนวณคะแนนรวม']
 
 const anonymousTokenPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
@@ -217,6 +223,9 @@ function App() {
     const sectionLabel = rubric[sectionIndex]?.title.trim() || `หัวข้อ ${sectionIndex + 1}`
     return `${sectionLabel}: ${issue.message}`
   })
+  const analysisMode = getAnalysisMode()
+  const analysisSteps = analysisMode === 'mock' ? mockAnalysisSteps : workerAnalysisSteps
+  const analysisModeInvalid = analysisMode === 'invalid'
   const documentTypeDefinition = getDocumentTypeDefinition(documentType)
   const availableRubricTemplates = getRubricTemplatesForDocumentType(documentType)
   const enabledWeight = rubric.filter((section) => section.enabled).reduce((total, section) => total + section.weight, 0)
@@ -229,7 +238,7 @@ function App() {
   const retryCooldownActive = retryPolicy?.mode === 'delayed'
     && retryClock < (retryAvailableAt ?? Number.POSITIVE_INFINITY)
   const unchangedRetryBlocked = retryPolicy?.mode === 'none' || retryCooldownActive
-  const canAnalyze = Boolean(preparedDocument.mainText.trim()) && !exceedsRawLimit && !exceedsAnalysisLimit && !controlsLocked && state !== 'result' && rubricValidation.success && !unchangedRetryBlocked
+  const canAnalyze = Boolean(preparedDocument.mainText.trim()) && !exceedsRawLimit && !exceedsAnalysisLimit && !analysisModeInvalid && !controlsLocked && state !== 'result' && rubricValidation.success && !unchangedRetryBlocked
   const priorityItems = useMemo(() => {
     if (!result) return []
     // Sections that do not apply to this kind of work carry no gap to fix.
@@ -391,7 +400,7 @@ function App() {
   }
 
   const startAnalysis = async (appendixIsConfirmed = appendixConfirmed) => {
-    if (analysisInFlightRef.current || state === 'analyzing' || unchangedRetryBlocked) return
+    if (analysisInFlightRef.current || state === 'analyzing' || unchangedRetryBlocked || analysisModeInvalid) return
     analysisInFlightRef.current = true
 
     const valid = await trigger('reportText')
@@ -446,7 +455,7 @@ function App() {
     }, getAnalysisTimeoutMs())
     const rubricVersion = rubricTemplates.find((template) => template.id === templateId)?.version ?? 'custom-rubric-v1'
     try {
-      if (usesMockAnalysis()) {
+      if (analysisMode === 'mock') {
         await new Promise<void>((resolve, reject) => {
           const timer = window.setTimeout(resolve, 600)
           controller.signal.addEventListener('abort', () => { window.clearTimeout(timer); reject(new DOMException('Cancelled', 'AbortError')) }, { once: true })
@@ -740,10 +749,12 @@ function App() {
               </div>
               {warnings.map((warning) => <Alert key={warning} className="border-amber-200 bg-amber-50 text-amber-950"><AlertCircle className="size-4" /><AlertTitle>โปรดตรวจข้อความจาก PDF</AlertTitle><AlertDescription>{warning}</AlertDescription></Alert>)}
               <div className="space-y-2">
-                <Button className="min-h-12 w-full text-base sm:w-auto sm:min-w-44" onClick={() => void startAnalysis()} disabled={!canAnalyze}><CheckCircle2 />{documentTypeDefinition.actionLabel}</Button>
+                <Button className="min-h-12 w-full text-base sm:w-auto sm:min-w-44" aria-describedby="analysis-mode-description" onClick={() => void startAnalysis()} disabled={!canAnalyze}><CheckCircle2 />{documentTypeDefinition.actionLabel}<span aria-hidden="true"> · {analysisMode === 'mock' ? 'ข้อมูลตัวอย่าง' : analysisMode === 'worker' ? 'AI' : 'ปิดใช้งาน'}</span></Button>
                 {!text.trim() && <p className="text-sm text-muted-foreground">วางข้อความหรือเลือก PDF ก่อน ปุ่มนี้จึงจะกดได้</p>}
                 {text.trim() && !rubricValidation.success && <p className="text-sm text-danger-foreground">โปรดแก้เกณฑ์การตรวจให้ถูกต้องก่อนส่ง</p>}
-                <p className="max-w-2xl text-xs leading-5 text-muted-foreground">เมื่อกดตรวจ เนื้อหาเอกสารหลัก ประเภทเอกสาร และเกณฑ์จะถูกส่งไปยัง Google Gemini ผ่าน Cloudflare Worker ผล AI อาจคลาดเคลื่อน ระบบไม่เก็บไฟล์หรือข้อความต้นฉบับถาวร และอาจพักผลสำเร็จไว้ไม่เกิน 10 นาทีเพื่อป้องกันการส่งซ้ำ <a className="text-primary underline underline-offset-2" href={PRIVACY_POLICY_PATH}>นโยบายความเป็นส่วนตัวของเรา</a> · <a className="text-primary underline underline-offset-2" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">นโยบายของ Google</a></p>
+                {analysisMode === 'mock' && <p id="analysis-mode-description" className="max-w-2xl text-xs leading-5 text-muted-foreground"><strong className="text-foreground">โหมดข้อมูลตัวอย่าง:</strong> ผลลัพธ์สร้างในเบราว์เซอร์เพื่อทดสอบหน้าจอ ไม่ใช่ผลจาก AI และเนื้อหาจะไม่ถูกส่งไปยัง Cloudflare หรือ Google Gemini</p>}
+                {analysisMode === 'worker' && <p id="analysis-mode-description" className="max-w-2xl text-xs leading-5 text-muted-foreground">เมื่อกดตรวจ เนื้อหาเอกสารหลัก ประเภทเอกสาร และเกณฑ์จะถูกส่งไปยัง Google Gemini ผ่าน Cloudflare Worker ผล AI อาจคลาดเคลื่อน ระบบไม่เก็บไฟล์หรือข้อความต้นฉบับถาวร และอาจพักผลสำเร็จไว้ไม่เกิน 10 นาทีเพื่อป้องกันการส่งซ้ำ <a className="text-primary underline underline-offset-2" href={PRIVACY_POLICY_PATH}>นโยบายความเป็นส่วนตัวของเรา</a> · <a className="text-primary underline underline-offset-2" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">นโยบายของ Google</a></p>}
+                {analysisModeInvalid && <Alert className="border-danger-border bg-danger-soft text-danger-foreground"><AlertCircle className="size-4" /><AlertTitle>ระบบตั้งค่าโหมดการตรวจไม่ถูกต้อง</AlertTitle><AlertDescription id="analysis-mode-description">ปุ่มตรวจถูกปิดไว้เพื่อป้องกันการแสดงผลตัวอย่างเป็นผลจริง กรุณาแจ้งผู้ดูแลระบบ ขณะนี้ยังไม่มีข้อมูลถูกส่งออกจากเบราว์เซอร์</AlertDescription></Alert>}
               </div>
             </CardContent>
           </Card>
@@ -783,8 +794,8 @@ function App() {
         {state === 'analyzing' && <section ref={analyzingRef} tabIndex={-1} className="mt-5 scroll-mt-4 outline-none" aria-label="กำลังตรวจเอกสาร">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />กำลังตรวจเอกสาร</CardTitle>
-              <CardDescription>รายการด้านล่างเป็นความคืบหน้าโดยประมาณ เอกสารยาวอาจใช้เวลาถึง 2 นาที</CardDescription>
+              <CardTitle className="flex items-center gap-2"><LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />{analysisMode === 'mock' ? 'กำลังสร้างผลจากข้อมูลตัวอย่าง' : 'กำลังตรวจเอกสารด้วย AI'}</CardTitle>
+              <CardDescription>{analysisMode === 'mock' ? 'กำลังสร้างผลตัวอย่างในเบราว์เซอร์ โดยไม่ส่งข้อมูลออกจากเครื่อง' : 'รายการด้านล่างเป็นความคืบหน้าโดยประมาณ เอกสารยาวอาจใช้เวลาถึง 2 นาที'}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
               <img data-mascot="thinking" src={thinkingMascotUrl} alt="" className="mx-auto h-36 w-auto sm:h-40" />
@@ -812,7 +823,7 @@ function App() {
         </Alert>}
 
         {state === 'result' && result && <section ref={resultRef} tabIndex={-1} className="mt-5 scroll-mt-4 space-y-5 outline-none" aria-label="ผลวิเคราะห์">
-          <Card><CardHeader><CardTitle>{getDocumentTypeDefinition(result.documentType).resultTitle}</CardTitle><CardDescription>ผลเบื้องต้น · ประเภทงาน {getDocumentTypeDefinition(result.documentType).label} · โมเดล {result.model} · เกณฑ์รุ่น {result.rubricVersion}</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm text-muted-foreground">{result.overallScore === null ? 'ทุกหัวข้อในเกณฑ์ถูกประเมินว่าไม่เกี่ยวข้องกับงานชิ้นนี้ ระบบจึงไม่คำนวณคะแนนรวม' : 'คะแนนรวมคำนวณด้วยโค้ดจากหัวข้อที่เกี่ยวข้องเท่านั้น หัวข้อที่ไม่เกี่ยวข้องไม่ถูกนับในตัวหาร'}</p><p className={`mt-1 font-semibold ${result.overallScore === null ? 'text-2xl text-muted-foreground' : 'text-5xl text-primary'}`}>{formatOverallScore(result)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="outline">ใช้ประเมิน {result.scoreSummary.applicableSectionCount}/{result.sections.length} หัวข้อ</Badge>{result.scoreSummary.notApplicableSectionCount > 0 && <Badge variant="secondary">{NOT_APPLICABLE_BADGE} {result.scoreSummary.notApplicableSectionCount} หัวข้อ</Badge>}<Button variant="outline" onClick={copyResult}><Copy />คัดลอกผล</Button><Button variant="outline" onClick={downloadResult}><Download />ดาวน์โหลด .txt</Button><Button variant="outline" onClick={prepareNewAnalysis}>แก้ไขแล้วตรวจใหม่</Button></div></div>{resultActionMessage && <p className="text-sm text-primary" aria-live="polite">{resultActionMessage}</p>}</CardContent></Card>
+          <Card><CardHeader><CardTitle>{getDocumentTypeDefinition(result.documentType).resultTitle}</CardTitle><CardDescription>{analysisMode === 'mock' ? 'ผลจากข้อมูลตัวอย่างในเบราว์เซอร์ · ไม่ใช่ผล AI' : `ผลเบื้องต้น · ประเภทงาน ${getDocumentTypeDefinition(result.documentType).label} · โมเดล ${result.model} · เกณฑ์รุ่น ${result.rubricVersion}`}</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm text-muted-foreground">{result.overallScore === null ? 'ทุกหัวข้อในเกณฑ์ถูกประเมินว่าไม่เกี่ยวข้องกับงานชิ้นนี้ ระบบจึงไม่คำนวณคะแนนรวม' : 'คะแนนรวมคำนวณด้วยโค้ดจากหัวข้อที่เกี่ยวข้องเท่านั้น หัวข้อที่ไม่เกี่ยวข้องไม่ถูกนับในตัวหาร'}</p><p className={`mt-1 font-semibold ${result.overallScore === null ? 'text-2xl text-muted-foreground' : 'text-5xl text-primary'}`}>{formatOverallScore(result)}</p></div><div className="flex flex-wrap gap-2"><Badge variant="outline">ใช้ประเมิน {result.scoreSummary.applicableSectionCount}/{result.sections.length} หัวข้อ</Badge>{result.scoreSummary.notApplicableSectionCount > 0 && <Badge variant="secondary">{NOT_APPLICABLE_BADGE} {result.scoreSummary.notApplicableSectionCount} หัวข้อ</Badge>}<Button variant="outline" onClick={copyResult}><Copy />คัดลอกผล</Button><Button variant="outline" onClick={downloadResult}><Download />ดาวน์โหลด .txt</Button><Button variant="outline" onClick={prepareNewAnalysis}>แก้ไขแล้วตรวจใหม่</Button></div></div>{resultActionMessage && <p className="text-sm text-primary" aria-live="polite">{resultActionMessage}</p>}</CardContent></Card>
           <Alert className="border-amber-200 bg-amber-50 text-amber-950"><AlertCircle className="size-4" /><AlertTitle>AI อาจคลาดเคลื่อน</AlertTitle><AlertDescription>ใช้ผลนี้ช่วยทบทวนงาน ไม่ใช่คำตัดสินแทนอาจารย์ และไม่ใช่ผลตรวจลอกเลียนผลงาน</AlertDescription></Alert>
           <Card><CardHeader><CardTitle>สิ่งที่ควรแก้ก่อนส่ง</CardTitle><CardDescription>เรียงจากหัวข้อคะแนนต่ำและน้ำหนักสูงก่อน ตรวจยืนยันกับเอกสารต้นฉบับทุกครั้ง</CardDescription></CardHeader><CardContent>{priorityItems.length ? <ol className="space-y-3 text-sm">{priorityItems.map((item, index) => <li key={`${item.section}-${item.missing}`} className="rounded-lg border bg-muted/50 p-3"><p className="font-medium text-foreground">{index + 1}. {item.section}</p><p className="mt-1 leading-6 text-muted-foreground">อาจยังขาด: {item.missing}</p><p className="mt-1 leading-6 text-primary">ควรทำ: {item.recommendation}</p></li>)}</ol> : <p className="text-sm leading-6 text-muted-foreground">AI ไม่พบประเด็นที่ขาดอย่างชัดเจนจากข้อความที่ส่ง แต่ยังควรตรวจเทียบกับเกณฑ์รายวิชาและไฟล์ต้นฉบับ</p>}</CardContent></Card>
           <div className="grid gap-4 lg:grid-cols-2">{result.sections.map((section) => <Card key={section.id} className={isNotApplicable(section) ? 'border-slate-200 bg-slate-50' : undefined}>

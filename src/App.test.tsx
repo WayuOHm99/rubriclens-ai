@@ -74,6 +74,47 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
   })
 
+  it('labels the exact true setting as sample data and does not call the Worker', async () => {
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', 'true')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    const analyzeButton = screen.getByRole('button', { name: 'ตรวจรายงาน' })
+    expect(analyzeButton).toHaveTextContent('ข้อมูลตัวอย่าง')
+    expect(screen.getByText(/เนื้อหาจะไม่ถูกส่งไปยัง Cloudflare หรือ Google Gemini/)).toBeInTheDocument()
+    await user.click(analyzeButton)
+
+    expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toHaveTextContent('ผลจากข้อมูลตัวอย่าง')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('labels the exact false setting as an AI request', async () => {
+    stubApi(apiResult())
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toHaveTextContent('AI')
+    expect(screen.getByText(/จะถูกส่งไปยัง Google Gemini ผ่าน Cloudflare Worker/)).toBeInTheDocument()
+  })
+
+  it.each(['False', '0', 'fales'])('blocks analysis when the mock setting is invalid: %s', async (invalidValue) => {
+    vi.stubEnv('VITE_USE_MOCK_ANALYSIS', invalidValue)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('ข้อความเอกสาร'), longEnoughReport)
+    expect(screen.getByRole('button', { name: 'ตรวจรายงาน' })).toBeDisabled()
+    expect(screen.getByText('ระบบตั้งค่าโหมดการตรวจไม่ถูกต้อง')).toBeInTheDocument()
+    expect(screen.getByText(/ยังไม่มีข้อมูลถูกส่งออกจากเบราว์เซอร์/)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('remains usable when browser storage is blocked', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('Blocked', 'SecurityError') })
     expect(() => render(<App />)).not.toThrow()

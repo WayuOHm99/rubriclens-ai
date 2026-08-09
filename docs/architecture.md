@@ -148,10 +148,12 @@ User input
 
 - KV key เป็น SHA-256 ของ idempotency key ไม่ใช่ค่าดิบจาก client
 - record ที่เก็บประกอบด้วย canonical request digest (SHA-256 ของ payload ที่ผ่าน validation แล้ว โดยเรียงคีย์คงที่) และ response ที่ serialize แล้ว
-- key เดิม + payload เดิม → คืนผลเดิมโดยไม่เรียก AI ซ้ำ
-- key เดิม + payload ต่างกัน → `409 IDEMPOTENCY_CONFLICT` (`retryable: false`) แทนที่จะคืนผลของเอกสารอื่น
+- เมื่อ record มองเห็นแล้ว: key เดิม + payload เดิม → คืนผลเดิมโดยไม่เรียก AI ซ้ำ
+- เมื่อ record มองเห็นแล้ว: key เดิม + payload ต่างกัน → `409 IDEMPOTENCY_CONFLICT` (`retryable: false`) แทนที่จะคืนผลของเอกสารอื่น
 - request ที่ malformed อ่าน cache ไม่ได้เลย เพราะ body ถูก validate ก่อนแตะ KV
 - เก็บเฉพาะ digest ไม่ได้เก็บ `reportText` เพิ่มจาก response ที่ต้องเก็บอยู่แล้ว
+
+ข้อจำกัด: ลำดับแรกยังเป็น `KV get → เรียก Gemini → KV put` ไม่ใช่ reservation แบบ atomic และ KV อาจเห็นค่าข้ามภูมิภาคช้า คำขอแรกที่ชนกันจึงอาจผ่านทั้งคู่ เรียก Gemini ซ้ำ และเขียนแบบ last-write-wins ได้ แต่ digest check ยังป้องกันไม่ให้ cache ส่งผลของ payload หนึ่งกลับให้อีก payload การรับประกัน single-flight จริงต้องมีกลไกประสาน stateful ซึ่งขัดกับข้อกำหนด stateless/KV-only ปัจจุบัน จึงต้องเป็นการตัดสินใจสถาปัตยกรรมแยก ไม่ควรจำลองด้วย mutable global state ใน Worker
 
 ### Token budget accounting
 

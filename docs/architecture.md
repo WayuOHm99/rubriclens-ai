@@ -151,7 +151,7 @@ User input
 
 ### Token budget accounting
 
-ก่อน application-level model call แต่ละครั้ง ระบบจองงบแบบ conservative โดยใช้ `countTokens` กับ prompt จริงและบังคับ `maxOutputTokens` ตามจำนวนหัวข้อใน rubric การจองแต่ละครั้งเขียนเป็น event key แยก จึงไม่มี stale/null overwrite แบบ read-modify-write เดิม และครอบคลุม chunk pass, consolidation pass, JSON validation retry กับการรันซ้ำบน fallback model แยกกัน แต่รายการ KV ยังมองเห็นข้ามภูมิภาคช้าได้ ไม่ใช่ hard global ceiling, ไม่ใช่ยอด billing จริง และมองไม่เห็น retry ภายใน SDK
+Worker จอง daily request slot หลัง validation แต่ก่อนสร้าง SDK หรือเรียก Google ทุกชนิด รวมถึง `countTokens`; คำขอที่ provider ล้มภายหลังจึงยังนับหนึ่งครั้งแบบ conservative เพื่อไม่ให้ outage/การลองซ้ำยิง provider เกินเพดาน จากนั้นก่อน application-level model call แต่ละครั้ง ระบบจองงบ token โดยใช้ `countTokens` กับ prompt จริงและบังคับ `maxOutputTokens` ตามจำนวนหัวข้อใน rubric การจองแต่ละครั้งเขียนเป็น event key แยก จึงไม่มี stale/null overwrite แบบ read-modify-write เดิม และครอบคลุม chunk pass, consolidation pass, JSON validation retry กับการรันซ้ำบน fallback model แยกกัน แต่รายการ KV ยังมองเห็นข้ามภูมิภาคช้าได้ ไม่ใช่ hard global ceiling, ไม่ใช่ยอด billing จริง และมองไม่เห็น retry ภายใน SDK
 
 Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ที่เป็น constrained instruction-following เพื่อลด latency และเหลือ generation allowance ให้ JSON ครบภายใน timeout ของ browser
 

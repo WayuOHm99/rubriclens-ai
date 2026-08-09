@@ -224,6 +224,7 @@ describe('POST /api/analyze', () => {
     expect(first.status).toBe(200)
     expect(blocked.status).toBe(429)
     expect((await blocked.json() as { code: string }).code).toBe('DAILY_REQUEST_BUDGET')
+    expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
     expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
   })
 

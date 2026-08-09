@@ -675,6 +675,10 @@ async function generateModelPlan(
 
 async function analyzeWithGemini(payload: AnalysisPayload, activeSections: ActiveSection[], env: AnalysisEnv, ledger: TokenLedger, control: ModelCallControl) {
   if (!env.GEMINI_API_KEY) throw new ApiFailure('AI_CONFIGURATION', 'ระบบยังไม่ได้ตั้งค่า Gemini API key กรุณาแจ้งผู้ดูแลระบบ', 503)
+  const dailyRequestLimit = Number(env.DAILY_BUDGET_LIMIT ?? '100')
+  if (env.RATE_LIMIT && await reserveCounterCapacity(env.RATE_LIMIT, `budget:requests:${new Date().toISOString().slice(0, 10)}`, Number.isFinite(dailyRequestLimit) ? dailyRequestLimit : 100, 1, 60 * 60 * 36)) {
+    throw new ApiFailure('DAILY_REQUEST_BUDGET', 'จำนวนการตรวจของระบบวันนี้ครบแล้ว โปรดลองใหม่วันถัดไป', 429)
+  }
   const ai = new GoogleGenAI({
     apiKey: env.GEMINI_API_KEY,
     httpOptions: {
@@ -697,11 +701,6 @@ async function analyzeWithGemini(payload: AnalysisPayload, activeSections: Activ
     } catch (fallbackError) {
       throw canUseFallback(fallbackError) ? exhaustedGeminiFailure(fallbackError) : fallbackError
     }
-  }
-
-  const dailyRequestLimit = Number(env.DAILY_BUDGET_LIMIT ?? '100')
-  if (env.RATE_LIMIT && await reserveCounterCapacity(env.RATE_LIMIT, `budget:requests:${new Date().toISOString().slice(0, 10)}`, Number.isFinite(dailyRequestLimit) ? dailyRequestLimit : 100, 1, 60 * 60 * 36)) {
-    throw new ApiFailure('DAILY_REQUEST_BUDGET', 'จำนวนการตรวจของระบบวันนี้ครบแล้ว โปรดลองใหม่วันถัดไป', 429)
   }
 
   let response: ModelResponse

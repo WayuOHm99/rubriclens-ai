@@ -8,7 +8,9 @@
 - RED: `npm test -- vite.config.test.ts` — **1 failed, 2 passed** เพราะ `index.html` ยังไม่มี URL ที่ระบุรุ่น
 - GREEN: `npm test -- vite.config.test.ts` — **3/3 passed** หลังหน้าแรก, privacy, terms และ 404 ใช้ `/favicon.svg?v=rubriclens-1` ตรงกัน
 - Full verification: `npm run verify` — **exit code 0**, Vitest **265/265 passed**, production-preview E2E **96/96 passed**, audit พบ 0 vulnerabilities
-- Production deployment และ browser smoke ของรอบนี้จะบันทึกเพิ่มหลัง deploy เพื่อไม่อ้างผลก่อนขึ้นจริง
+- Pages production deployment: `fdbe0e5d-3acb-476d-8231-29abf5212856` จาก source commit `c0bea77`; rollback point คือ `8c96946a-6c59-4fd3-8c17-4831364b5e85`
+- Production smoke: หน้าแรก, privacy และ terms ตอบ HTTP 200 พร้อม URL favicon รุ่นใหม่; `/cookies` ตอบ 404 พร้อม URL เดียวกัน; `/favicon.svg?v=rubriclens-1` ตอบ 200 และ SVG ระบุ `RubricLensAi`
+- TestSprite replay: หน้าแรก run `7dcfe714-702c-4c9e-a2e8-26237a1d887a` และ privacy run `67792947-8163-4975-bb26-d5758fe43c15` — **2/2 passed**, 0 failed/blocked, 0 timed out
 
 ## Production verification — 9 สิงหาคม 2026 (Phase 2)
 

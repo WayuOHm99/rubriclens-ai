@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-255%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-256%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -107,7 +107,7 @@ flowchart LR
 | ตรวจอะไร | คำสั่ง | ผล |
 | --- | --- | ---: |
 | ตรวจโค้ดแบบสถิต | `npm run lint` | ผ่าน |
-| Unit + component + Worker | `npm run test` | **255 / 255** |
+| Unit + component + Worker | `npm run test` | **256 / 256** |
 | ชนิดข้อมูล Worker, generated bindings และ dry-run bundle | `npm run worker:check` | ผ่าน |
 | ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | **ไม่พบช่องโหว่ (0 รายการ)**<sup>†</sup> |
 | Production build | `npm run build` | ผ่าน |
@@ -148,9 +148,13 @@ npm run dev               # http://localhost:5173
 ถ้าจะทดสอบเส้นทางที่เรียก Worker จริง:
 
 ```bash
+# ใน .env ตั้งค่าฝั่ง browser ที่ไม่ใช่ความลับ: VITE_USE_MOCK_ANALYSIS=false
 # สร้าง .dev.vars (Git ignore ไว้แล้ว) แล้วใส่ GEMINI_API_KEY=<คีย์สำหรับ local>
-npm run worker:dev        # รันคู่กับ npm run dev
+npm run worker:dev        # http://127.0.0.1:8787; รันคู่กับ npm run dev
 ```
+
+Vite จะส่งคำขอ `/api` ที่มาจาก browser ไปยัง Worker ในเครื่อง ถ้าไม่ได้รันคำสั่ง Worker หน้าเว็บจะแจ้ง
+network error และจะไม่ถอยไปเรียก Worker production เอง
 
 ห้ามใส่ Gemini key ใน `VITE_*`, source code หรือ commit history ค่า local ให้อยู่เฉพาะใน `.dev.vars`
 ที่ Git ignore — ดู [SECURITY.md](SECURITY.md)

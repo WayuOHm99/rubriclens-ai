@@ -70,6 +70,8 @@ Browser ตรวจ schema และ `apiVersion` แล้วคำนวณ `
 
 `VITE_USE_MOCK_ANALYSIS` รับเฉพาะ `true` หรือ `false` แบบตรงตัว: ถ้าไม่ตั้งค่า local development ใช้ mock และ production ใช้ Worker ตามค่าเริ่มต้น แต่ค่าที่ไม่รู้จักจะปิดปุ่มตรวจพร้อมแจ้ง configuration error เพื่อไม่ให้ค่าที่พิมพ์ผิดแสดงผลตัวอย่างเหมือนผล AI ปุ่ม คำอธิบายระหว่างรอ และหัวผลลัพธ์ระบุโหมดที่ใช้อยู่เสมอ
 
+ใน local real-Worker mode ผู้พัฒนาตั้ง `VITE_USE_MOCK_ANALYSIS=false`; browser ยังเรียก same-origin `/api` และ Vite proxy ส่งต่อไปยัง `wrangler dev` ที่ `127.0.0.1:8787` เท่านั้น จึงไม่ต้องเพิ่ม localhost ลง production CORS และไม่ถอยไปเรียก production Worker เมื่อ local Worker ไม่ทำงาน
+
 ## Data flow
 
 ```text

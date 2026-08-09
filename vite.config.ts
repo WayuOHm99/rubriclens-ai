@@ -11,6 +11,16 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
+  server: {
+    // The browser keeps a same-origin `/api` URL in local development. Vite
+    // forwards it to `wrangler dev`, so no production origin or Worker is used.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     rollupOptions: {
       // เว็บนี้มีสามหน้า: หน้าตรวจเอกสาร นโยบายความเป็นส่วนตัว และข้อกำหนดการใช้งาน

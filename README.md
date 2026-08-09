@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/WayuOHm99/rubriclens-ai/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-rubriclensai.pages.dev-2563eb?style=flat-square)](https://rubriclensai.pages.dev/)
-[![Tests](https://img.shields.io/badge/tests-255%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
+[![Tests](https://img.shields.io/badge/tests-256%20unit%20%7C%2096%20E2E-16a34a?style=flat-square)](docs/testing-report.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -110,7 +110,7 @@ cache, and 10-minute idempotency records. Full notes, including the *"which file
 | Check | Command | Result |
 | --- | --- | ---: |
 | Static analysis | `npm run lint` | passed |
-| Unit + component + Worker | `npm run test` | **255 / 255** |
+| Unit + component + Worker | `npm run test` | **256 / 256** |
 | Worker types, generated bindings and dry-run bundle | `npm run worker:check` | passed |
 | Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities**<sup>†</sup> |
 | Production build | `npm run build` | passed |
@@ -153,9 +153,13 @@ explorable with no API key and no cost.
 To exercise the real Worker path:
 
 ```bash
+# In .env, set the browser-safe flag: VITE_USE_MOCK_ANALYSIS=false
 # Create .dev.vars (already git-ignored) and add: GEMINI_API_KEY=<your-local-key>
-npm run worker:dev        # run alongside `npm run dev`
+npm run worker:dev        # http://127.0.0.1:8787; run alongside `npm run dev`
 ```
+
+Vite proxies the browser's same-origin `/api` requests to the local Worker. If the Worker command is
+not running, the browser shows a network error; it does not fall back to the production Worker.
 
 Never put a Gemini key in `VITE_*`, source, or commit history. Keep the local value only in the
 git-ignored `.dev.vars` file — see [SECURITY.md](SECURITY.md).

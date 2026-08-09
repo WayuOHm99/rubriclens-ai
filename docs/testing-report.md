@@ -16,9 +16,9 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 | --- | --- | --- |
 | Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
 | Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
-| ทั้งชุด | `npm run verify` | **exit code 0** — 95.7 วินาที |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 92.2 วินาที |
 | Static analysis | `npm run lint` | passed |
-| Unit/component/Worker | `npm run test` | **255/255 passed** ใน 10 test files |
+| Unit/component/Worker/config | `npm run test` | **256/256 passed** ใน 11 test files |
 | Worker types, generated bindings and bundle | `npm run worker:check` | passed — generated binding check, strict TypeScript และ dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
 | Production dependency audit | `npm audit --omit=dev --audit-level=high` | **exit code 0 — found 0 vulnerabilities** |
 | Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
@@ -42,9 +42,10 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 | Cron เห็น Gemini outage แต่ run ยังสำเร็จ | Worker 1 failed / 74 | Worker รวมปัจจุบัน **74/74 passed** |
 | daily request budget อยู่หลัง provider `countTokens` | Worker assertion ได้ 2 calls แทน 1 | Worker **74/74 passed** |
 | Worker ไม่มี strict compiler/binding drift gate และใช้ thinking level ที่ SDK ไม่รองรับ | TypeScript RED; Worker follow-up 35 failed แล้วเหลือ 1 assertion ที่รับรองค่าเดิมผิด | Worker type/binding/dry-run ผ่าน และ Worker **74/74 passed** ด้วย `ThinkingLevel.LOW` |
+| คู่มือ local real-Worker ไม่มี Vite `/api` proxy | Config test 1 failed / 1 เพราะ proxy เป็น `undefined` | Config focused **1/1 passed** และ production build ผ่าน |
 | SDK promise ไม่จบหลัง aggregate deadline/cancel | Worker 4 failed / 65 | Worker รวมปัจจุบัน **74/74 passed** |
 | SDK promise ไม่จบหลังเพดานย่อย 10/60 วินาที | Worker 2 failed / 73 | Worker **74/74 passed** โดยยังเริ่ม fallback เดิมได้เมื่อ aggregate deadline ยังเหลือ |
-| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 255/255 |
+| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 256/256 |
 | anonymous token ที่ non-empty แต่รูปแบบเสีย | App 3 failed / 41 | App **41/41 passed** ใน focused run นั้น |
 | stale-null KV, cron cache failure, webhook non-2xx | Worker 7 failed / 70 | Worker **70/70 passed** ก่อนเพิ่ม health deadline |
 | health SDK promise ไม่จบหลัง 5 วินาที | Worker 1 failed / 71 | Worker **71/71 passed** |

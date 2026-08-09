@@ -510,18 +510,28 @@ function waitForAbortableProviderPromise<T>(providerPromise: Promise<T>, signal:
  * handler attached because aborting this wait cannot guarantee that provider
  * work, retries or billing stop at the same moment.
  */
-function waitForModelCall<T>(providerPromise: Promise<T>, control: ModelCallControl) {
-  return waitForAbortableProviderPromise(providerPromise, control.signal, () => stoppedModelCallFailure(control))
+function waitForModelCall<T>(startProviderCall: () => Promise<T>, control: ModelCallControl, timeoutMs: number) {
+  ensureModelCallIsActive(control)
+  const callDeadlineSignal = AbortSignal.timeout(timeoutMs)
+  const waitSignal = AbortSignal.any([control.signal, callDeadlineSignal])
+  const providerPromise = startProviderCall()
+  return waitForAbortableProviderPromise(providerPromise, waitSignal, () => {
+    if (control.signal.aborted) return stoppedModelCallFailure(control)
+    // Keep the established fallback behavior for an individual provider-call
+    // timeout. Only the shared request/aggregate boundary becomes a terminal
+    // GEMINI_TIMEOUT that forbids later provider work.
+    return new Error('Gemini provider call exceeded its application timeout')
+  })
 }
 
 async function countPromptTokens(ai: GoogleGenAI, model: string, systemInstruction: string, prompt: string, control: ModelCallControl) {
   ensureModelCallIsActive(control)
   try {
-    const count = await waitForModelCall(ai.models.countTokens({
+    const count = await waitForModelCall(() => ai.models.countTokens({
       model,
       contents: `${systemInstruction}\n\n${prompt}`,
       config: { httpOptions: { timeout: GEMINI_TOKEN_COUNT_TIMEOUT_MS }, abortSignal: control.signal },
-    }), control)
+    }), control, GEMINI_TOKEN_COUNT_TIMEOUT_MS)
     return count.totalTokens ?? 0
   } catch (error) {
     ensureModelCallIsActive(control)
@@ -544,7 +554,7 @@ async function generateValidated(
     const maxOutputTokens = estimateOutputTokens(activeSections.length)
     await ledger.charge(modelCall.promptTokens + maxOutputTokens)
     ensureModelCallIsActive(control)
-    const response = await waitForModelCall(ai.models.generateContent({
+    const response = await waitForModelCall(() => ai.models.generateContent({
       model,
       contents: modelCall.prompt,
       config: {
@@ -558,7 +568,7 @@ async function generateValidated(
         // evaluation is constrained instruction-following, so low is enough.
         thinkingConfig: { thinkingLevel: 'low' },
       },
-    }), control)
+    }), control, GEMINI_REQUEST_TIMEOUT_MS)
     return response.text ?? ''
   }
   try {

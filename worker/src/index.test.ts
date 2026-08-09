@@ -484,6 +484,83 @@ describe('POST /api/analyze', () => {
     }
   })
 
+  it('stops waiting at the 10-second token-count boundary and starts the existing fallback even when the provider promise ignores timeout', async () => {
+    vi.useFakeTimers()
+    const aggregateDeadline = new AbortController()
+    const primaryTokenDeadline = new AbortController()
+    const fallbackTokenDeadline = new AbortController()
+    const generationDeadline = new AbortController()
+    let tokenDeadlineCall = 0
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      if (milliseconds === 100_000) return aggregateDeadline.signal
+      if (milliseconds === 10_000) return tokenDeadlineCall++ === 0 ? primaryTokenDeadline.signal : fallbackTokenDeadline.signal
+      if (milliseconds === 60_000) return generationDeadline.signal
+      throw new Error(`Unexpected timeout in test: ${milliseconds}`)
+    })
+    let markPrimaryStarted = () => undefined
+    const primaryStarted = new Promise<void>((resolve) => { markPrimaryStarted = resolve })
+    sdkMocks.countTokens.mockImplementation(({ model }) => model === 'primary-model'
+      ? providerPromiseThatIgnoresAbort(markPrimaryStarted)
+      : Promise.resolve({ totalTokens: 200 }))
+    sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
+
+    const responsePromise = worker.fetch(analyzeRequest(body, 'token-call-timeout-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model' }))
+    try {
+      await primaryStarted
+      primaryTokenDeadline.abort()
+      const response = await responseBeforeWatchdog(responsePromise)
+
+      expect(response.status).toBe(200)
+      expect(timeoutSpy).toHaveBeenCalledWith(10_000)
+      expect(sdkMocks.countTokens.mock.calls.map(([request]) => request.model)).toEqual(['primary-model', 'fallback-model'])
+      expect(sdkMocks.generateContent.mock.calls.map(([request]) => request.model)).toEqual(['fallback-model'])
+    } finally {
+      aggregateDeadline.abort()
+      await responsePromise
+      timeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops waiting at the 60-second generation boundary and starts the existing fallback even when the provider promise ignores timeout', async () => {
+    vi.useFakeTimers()
+    const aggregateDeadline = new AbortController()
+    const primaryGenerationDeadline = new AbortController()
+    const fallbackGenerationDeadline = new AbortController()
+    const tokenDeadlines = [new AbortController(), new AbortController()]
+    let tokenDeadlineCall = 0
+    let generationDeadlineCall = 0
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      if (milliseconds === 100_000) return aggregateDeadline.signal
+      if (milliseconds === 10_000) return tokenDeadlines[Math.min(tokenDeadlineCall++, tokenDeadlines.length - 1)].signal
+      if (milliseconds === 60_000) return generationDeadlineCall++ === 0 ? primaryGenerationDeadline.signal : fallbackGenerationDeadline.signal
+      throw new Error(`Unexpected timeout in test: ${milliseconds}`)
+    })
+    let markPrimaryStarted = () => undefined
+    const primaryStarted = new Promise<void>((resolve) => { markPrimaryStarted = resolve })
+    sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
+    sdkMocks.generateContent.mockImplementation(({ model }) => model === 'primary-model'
+      ? providerPromiseThatIgnoresAbort(markPrimaryStarted)
+      : Promise.resolve({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) }))
+
+    const responsePromise = worker.fetch(analyzeRequest(body, 'generation-call-timeout-key'), geminiEnv({ GEMINI_MODEL: 'primary-model', GEMINI_FALLBACK_MODEL: 'fallback-model' }))
+    try {
+      await primaryStarted
+      primaryGenerationDeadline.abort()
+      const response = await responseBeforeWatchdog(responsePromise)
+
+      expect(response.status).toBe(200)
+      expect(timeoutSpy).toHaveBeenCalledWith(60_000)
+      expect(sdkMocks.countTokens.mock.calls.map(([request]) => request.model)).toEqual(['primary-model', 'fallback-model'])
+      expect(sdkMocks.generateContent.mock.calls.map(([request]) => request.model)).toEqual(['primary-model', 'fallback-model'])
+    } finally {
+      aggregateDeadline.abort()
+      await responsePromise
+      timeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('does not start generation if the deadline expires while reserving the token budget', async () => {
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)

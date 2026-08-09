@@ -2,15 +2,17 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
-## TestSprite Pull Request preview — 9 สิงหาคม 2026
+## TestSprite Pull Request preview — 10 สิงหาคม 2026
 
-**สถานะ: กำลังตรวจบน Pull Request — ยังไม่ถือว่าผ่านจนกว่าจะมี URL preview และผล TestSprite จริง**
+**สถานะ: ผ่าน — PR #4 ตรวจพบและรัน TestSprite ครบ 15/15 รายการบน Pages preview**
 
-- สาเหตุที่ TestSprite ค้างที่ `15 Tests detected, waiting for deployment`: Cloudflare Pages project `rubriclensai` เป็น Direct Upload (`Git Provider: No`) จึงไม่มีระบบส่ง frontend deployment status กลับไปที่ Pull Request; GitHub Deployments API ก็ยังไม่มีรายการของ Pages
+- สาเหตุที่ TestSprite เคยค้างที่ `15 Tests detected, waiting for deployment`: Cloudflare Pages project `rubriclensai` เป็น Direct Upload (`Git Provider: No`) จึงไม่มีระบบส่ง frontend deployment status กลับไปที่ Pull Request และ GitHub Deployments API ยังไม่มีรายการของ Pages
 - เพิ่มงาน GitHub Actions หลัง quality gate เพื่อ build frontend ด้วยข้อมูลตัวอย่าง (`VITE_USE_MOCK_ANALYSIS=true`), deploy เป็น Cloudflare Pages preview และประกาศ URL เป็น GitHub Deployment ให้ TestSprite ใช้
-- งานนี้ไม่แก้ application code, Worker, scoring, API contract, test หรือ library และไม่ deploy production
-- ผลตรวจในเครื่องก่อน push: mock preview build exit code 0; `npm run verify` exit code 0, Vitest 265/265 ผ่าน, production-preview E2E 96/96 ผ่าน, Worker dry-run ผ่าน และ production dependency audit พบ 0 vulnerabilities
-- หลักฐาน live PR, deployment URL และผล TestSprite จะเติมหลัง push และรันจริง
+- ซ่อมสคริปต์ TestSprite 11 ไฟล์ให้ตรงกับหน้าจอจริง เช่น การบันทึกร่างอัตโนมัติ กล่องยืนยันการล้าง/แทนที่เอกสาร การเลือกประเภทเอกสาร และการแนบ PDF แบบฝังข้อมูลใน test โดยไม่พึ่ง path ภายใน repository
+- TC003 และ TC019 ใช้ Firefox พร้อม cache ชั่วคราวที่ `/tmp` เพราะ Chromium แบบ process เดียวปิดตัวเมื่อ PDF.js เริ่ม Web Worker ส่วน Chromium แบบหลาย process ถูก sandbox ของ TestSprite ปิดก่อนเปิดหน้า; assertion การอัปโหลด อ่านข้อความ และตรวจความพร้อมยังอยู่ครบ
+- หลักฐานรอบผ่านที่ commit `8f63f2e`: GitHub Actions run `31326833779` ผ่าน โดย Vitest 265/265 และ production-preview E2E 96/96; preview `https://c70f3970.rubriclensai.pages.dev/`; TestSprite Pre-Check พบ 15 tests และ TestSprite ผ่าน **15/15**
+- หลักฐานตรวจย้อนหลัง: [PR #4 Add safe Pages preview for TestSprite](https://github.com/WayuOHm99/rubriclens-ai/pull/4) และ [GitHub Actions run 31326833779](https://github.com/WayuOHm99/rubriclens-ai/actions/runs/31326833779); ไม่บันทึก URL ที่มีลายเซ็นและรหัสผู้ใช้ของ TestSprite ลง repository
+- ไม่แก้ application code, Worker, scoring, API contract หรือ library และไม่ deploy production
 
 ## TestSprite GitHub integration repair — 9 สิงหาคม 2026
 

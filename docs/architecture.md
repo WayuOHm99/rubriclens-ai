@@ -67,6 +67,8 @@
 - `testsprite-mcp-test-report.md` บันทึกผล cloud, ผลตรวจในเครื่อง และข้อจำกัดของ runner แยกจากกัน
 - `tmp/test_results.json` เป็นสารบัญที่ TestSprite GitHub runner ใช้จับคู่ test plan กับไฟล์ `TC*.py` จึง commit เฉพาะไฟล์ที่ตัด URL, user/session metadata และค่าลับออกแล้ว; ไฟล์อื่นใน `testsprite_tests/tmp/` ยังถูก Git ละเว้น
 - GitHub App ทำหน้าที่รัน test เท่านั้น ไม่ได้สร้าง test และต้องรอ deployment status ของ Pull Request ก่อนเริ่มตามข้อกำหนดของ TestSprite
+- `.github/workflows/ci.yml` สร้าง Cloudflare Pages preview หลังงานตรวจคุณภาพผ่าน เฉพาะ Pull Request ที่มาจาก repository นี้ แล้วส่ง URL กลับเป็น GitHub Deployment เพื่อปลดขั้นรอของ TestSprite
+- Preview ดังกล่าว build ด้วย `VITE_USE_MOCK_ANALYSIS=true` จึงใช้ผลตัวอย่างที่ทำซ้ำได้ ไม่เรียก Worker หรือ Gemini และไม่เปลี่ยน production; Pull Request จาก fork จะไม่ deploy เพราะ GitHub ไม่ส่ง secret ให้โค้ดภายนอก
 
 ## Where the score is calculated
 

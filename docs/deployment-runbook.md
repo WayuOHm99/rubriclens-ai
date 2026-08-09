@@ -100,7 +100,7 @@ npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put ALERT_WEBHOOK_URL
 ```
 
-คือปลายทางที่ตัวเฝ้ารายชั่วโมงจะส่งข้อความไปเมื่อ Gemini เรียกไม่ได้ ใส่ URL ของ Discord หรือ Slack incoming webhook ได้เลย ระบบส่ง `{"content": "...", "text": "...", "code": "..."}` โดย Discord อ่าน `content` และ Slack อ่าน `text` **ถ้าไม่ตั้ง ตัวเฝ้ายังทำงานและยังบันทึกลง Workers Logs เหมือนเดิม แค่ไม่มีข้อความเด้งเข้ามือถือ**
+คือปลายทางที่ตัวเฝ้ารายชั่วโมงจะส่งข้อความไปเมื่อ Gemini เรียกไม่ได้ ใส่ URL ของ Discord หรือ Slack incoming webhook ได้เลย ระบบส่ง `{"content": "...", "text": "...", "code": "..."}` โดย Discord อ่าน `content` และ Slack อ่าน `text` **ถ้าไม่ตั้ง ตัวเฝ้ายังทำให้ scheduled invocation ขึ้น failed ใน Cron Past Events แต่ไม่มีข้อความเด้งเข้ามือถือ และ Workers Logs อาจไม่เก็บทุกครั้งตาม sampling ที่ตั้งไว้**
 
 หลังเปลี่ยน secret ให้บันทึก version/deployment ID ที่เกิดขึ้นใหม่และทำ health smoke ในขั้นที่ 5 ก่อน deploy ส่วนอื่น
 

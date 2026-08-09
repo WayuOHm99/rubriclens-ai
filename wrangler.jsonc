@@ -6,9 +6,9 @@
   "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   // ALERT_WEBHOOK_URL is an optional extra secret, set with
   // `wrangler secret put ALERT_WEBHOOK_URL`. It is where the hourly watch
-  // pushes its alert when Gemini stops answering. The watch still writes to
-  // Workers Logs without it, so leaving it unset costs the push notification,
-  // not the detection. It stays out of "required" so a deploy never blocks on
+  // pushes its alert when Gemini stops answering. Without it, an outage still
+  // rejects the scheduled invocation so Cron Past Events records a failure;
+  // structured logs remain subject to sampling. It stays out of "required" so a deploy never blocks on
   // an alert channel nobody has chosen yet.
   "secrets": {
     "required": ["GEMINI_API_KEY"]

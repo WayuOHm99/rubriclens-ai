@@ -1227,7 +1227,7 @@ describe('the hourly watch on the Gemini key', () => {
     const alerts = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     globalThis.fetch = alerts as unknown as typeof fetch
 
-    await runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))
+    await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
 
     expect(alerts).toHaveBeenCalledTimes(1)
     expect(alerts.mock.calls[0][0]).toBe('https://hooks.example.test/alert')
@@ -1247,11 +1247,19 @@ describe('the hourly watch on the Gemini key', () => {
     expect(alerts).not.toHaveBeenCalled()
   })
 
+  it('marks the scheduled run as failed when the Gemini probe reports an outage', async () => {
+    sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
+    const rateLimit = new MemoryKv()
+
+    await expect(runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
+    expect(JSON.parse(rateLimit.values.get('health:ai-reachable') as string)).toMatchObject({ reachable: false, code: 'AI_CONFIGURATION' })
+  })
+
   it('still detects and records a dead key when no webhook is configured', async () => {
     sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
     const rateLimit = new MemoryKv()
 
-    await runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit }))
+    await expect(runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
 
     expect(JSON.parse(rateLimit.values.get('health:ai-reachable') as string)).toMatchObject({ reachable: false, code: 'AI_CONFIGURATION' })
   })
@@ -1261,17 +1269,17 @@ describe('the hourly watch on the Gemini key', () => {
     await rateLimit.put('health:ai-reachable', JSON.stringify({ reachable: true, code: 'OK', checkedAt: Math.floor(Date.now() / 1000) }))
     sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
 
-    await runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit }))
+    await expect(runScheduledWatch(geminiEnv({ RATE_LIMIT: rateLimit }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
 
     expect(sdkMocks.countTokens).toHaveBeenCalledTimes(1)
     expect(JSON.parse(rateLimit.values.get('health:ai-reachable') as string)).toMatchObject({ reachable: false })
   })
 
-  it('does not let a broken alert channel bring down the scheduled run', async () => {
+  it('marks the scheduled run failed even when the alert channel is also broken', async () => {
     sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('webhook unreachable')) as unknown as typeof fetch
 
-    await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).resolves.toBeUndefined()
+    await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
   })
 
   it('still logs and sends the outage alert when refreshing the health cache fails', async () => {
@@ -1297,7 +1305,7 @@ describe('the hourly watch on the Gemini key', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     try {
-      await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).resolves.toBeUndefined()
+      await expect(runScheduledWatch(geminiEnv({ ALERT_WEBHOOK_URL: 'https://hooks.example.test/alert' }))).rejects.toThrow('Gemini watch failed: AI_CONFIGURATION')
       expect(log.mock.calls.some(([entry]) => String(entry).includes('gemini_watch_alert_failed'))).toBe(true)
     } finally {
       log.mockRestore()

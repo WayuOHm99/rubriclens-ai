@@ -184,10 +184,11 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 - **ข้ามแคชเสมอ** — ถ้าอ่านแคชก็จะได้คำตอบเดิมที่ตัวเองเพิ่งเขียนไว้ ตัวเฝ้าจึงต้องยิงถาม Google จริงทุกครั้ง แล้วเขียนแคชทับให้คนที่มาอ่าน `?verify=ai` ต่อได้ประโยชน์
 - **เงียบเมื่อปกติ** — เขียน log ระดับ info เฉยๆ เพราะการแจ้งเตือนที่ดังทุกชั่วโมงคือการแจ้งเตือนที่ไม่มีใครอ่าน
 - **ดังเมื่อพัง** — เขียน `console.error` และยิง webhook **ก่อน** refresh health cache เพื่อให้ KV ล่มแล้วไม่กลืนสัญญาณ outage; payload เป็น `{content, text, code}` (`content` สำหรับ Discord, `text` สำหรับ Slack)
-- **webhook พังไม่ทำให้ตัวเฝ้าพัง** — การยิง webhook ถูกครอบ try/catch, มีเพดานเวลา 5 วินาที และ HTTP non-2xx ถูกนับเป็น `gemini_watch_alert_failed` ไม่ใช่ความสำเร็จเงียบ ๆ
-- **cache พังทำให้ cron run แดงหลังแจ้งเตือนแล้ว** — ช่วยให้ runtime บันทึก scheduled invocation ว่าล้มเหลว แต่ไม่ตัด log/webhook ของ outage ออก
+- **outage ทำให้ cron run แดงเสมอ** — หลังเขียน log, พยายามส่ง webhook และ refresh cache แล้ว `scheduled()` จะ throw ด้วย `aiCheckCode` เพื่อให้ Cloudflare บันทึก invocation ว่าล้มเหลว แม้ไม่ได้ตั้ง webhook หรือ webhook พัง
+- **webhook พังไม่กลืนสาเหตุหลัก** — การยิง webhook ถูกครอบ try/catch, มีเพดานเวลา 5 วินาที และ HTTP non-2xx ถูกบันทึกเป็น `gemini_watch_alert_failed`; จากนั้น cron ยังล้มด้วยสถานะ Gemini เดิม ไม่ใช่ด้วยรายละเอียดช่องแจ้งเตือน
+- **cache พังก็ทำให้ cron run แดงหลังแจ้งเตือนแล้ว** — ช่วยให้ runtime บันทึก scheduled invocation ว่าล้มเหลว โดยไม่ตัด log/webhook ของ outage ออก
 
-`ALERT_WEBHOOK_URL` **ไม่ได้อยู่ใน `secrets.required`** โดยตั้งใจ เพื่อให้ deploy ได้โดยไม่ต้องเลือกช่องทางแจ้งเตือนก่อน — ไม่ตั้งก็ยังตรวจเจอ แค่ไม่มีข้อความเด้ง
+`ALERT_WEBHOOK_URL` **ไม่ได้อยู่ใน `secrets.required`** โดยตั้งใจ เพื่อให้ deploy ได้โดยไม่ต้องเลือกช่องทางแจ้งเตือนก่อน — ไม่ตั้งก็ยังทำให้ Cron Past Events ขึ้น failed แต่ไม่มีข้อความเด้ง และ Workers Logs ยังขึ้นกับ `head_sampling_rate`
 
 ### Explicit appendix consent
 

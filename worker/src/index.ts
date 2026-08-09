@@ -942,13 +942,15 @@ async function watchGeminiReachable(env: AnalysisEnv) {
         })
         if (!response.ok) throw new Error(`Alert webhook returned HTTP ${response.status}`)
       } catch (error) {
-        // A failed alert must not retry the whole scheduled run; the outage log
-        // above is still recorded either way.
+        // Keep refreshing the health cache even when the alert channel fails.
+        // The scheduled handler below fails from the Gemini verdict itself,
+        // rather than hiding the provider outage behind a webhook error.
         console.error(JSON.stringify({ event: 'gemini_watch_alert_failed', reason: error instanceof Error ? error.name : 'unknown' }))
       }
     }
   }
   await env.RATE_LIMIT?.put(AI_CHECK_CACHE_KEY, JSON.stringify(verdict), { expirationTtl: AI_CHECK_CACHE_SECONDS })
+  return verdict
 }
 
 export default {
@@ -956,7 +958,8 @@ export default {
   // exact problem this whole feature exists to solve, and awaiting lets the
   // runtime record the run itself as failed.
   async scheduled(_controller: ScheduledController, env: Env | AnalysisEnv, _ctx: ExecutionContext) {
-    await watchGeminiReachable(env)
+    const verdict = await watchGeminiReachable(env)
+    if (!verdict.reachable) throw new Error(`Gemini watch failed: ${verdict.code}`)
   },
 
   async fetch(request: Request, env: Env | AnalysisEnv): Promise<Response> {

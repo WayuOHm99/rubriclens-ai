@@ -181,7 +181,7 @@ dashboard เคยทำให้โปรเจกต์นี้พังม�
 ขั้นตอนเต็มและวิธี rollback อยู่ที่ [docs/deployment-runbook.md](docs/deployment-runbook.md)
 
 ระบบมีตัวเฝ้าอัตโนมัติ (cron ทุกชั่วโมง) คอยถาม Google ว่า key ยังใช้ได้ไหม เพราะ key ที่ถูกลบแล้ว
-หน้าตาเหมือน key ที่ใช้ได้ทุกประการจนกว่าจะมีคนส่งเอกสารเข้ามาตรวจ ตัวเฝ้าบันทึกลง Workers Logs เสมอ
+หน้าตาเหมือน key ที่ใช้ได้ทุกประการจนกว่าจะมีคนส่งเอกสารเข้ามาตรวจ ถ้าตรวจไม่ผ่าน ระบบจะพยายามส่ง webhook และเขียน cache ก่อนทำให้ scheduled invocation ขึ้น failed ใน Cron Past Events แม้ไม่ได้ตั้ง webhook ส่วน Workers Logs ยังขึ้นกับอัตรา sampling ที่ตั้งไว้
 และถ้าตั้ง secret `ALERT_WEBHOOK_URL` ไว้ก็จะส่งข้อความไปที่ URL นั้นด้วย ถ้าอยากถามเองทันที:
 
 ```bash

@@ -186,8 +186,8 @@ has broken this project before — that incident is written up in [LESSONS.md](L
 and rollback: [docs/deployment-runbook.md](docs/deployment-runbook.md).
 
 An hourly cron trigger asks Google whether the key still works, because a deleted key is
-indistinguishable from a working one until somebody submits a document. It writes to Workers Logs
-always, and pushes to the optional `ALERT_WEBHOOK_URL` secret when one is set. To ask the same
+indistinguishable from a working one until somebody submits a document. A failed probe rejects the scheduled invocation after attempting the webhook and cache update, so Cron Past Events records a failure even when no webhook is configured. Structured Workers Logs remain subject to the configured sampling rate,
+and the watch pushes to the optional `ALERT_WEBHOOK_URL` secret when one is set. To ask the same
 question by hand:
 
 ```bash

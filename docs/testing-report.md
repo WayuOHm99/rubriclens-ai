@@ -17,7 +17,7 @@
 **สถานะ: production ใช้งานได้; เส้นทางหลักผ่านจริง และมี TestSprite 3 รายการถูกบล็อกด้วยข้อจำกัดของ runner มือถือ**
 
 - Source commit: `e7f4ff4e07aaad0f31c55255239af356c3a0d90e` บน branch `phase2-brand-integration`
-- Draft PR: [#1 Phase 2 brand integration and reliability safeguards](https://github.com/WayuOHm99/rubriclens-ai/pull/1)
+- Merged PR: [#1 Phase 2 brand integration and reliability safeguards](https://github.com/WayuOHm99/rubriclens-ai/pull/1) — merge commit `7915f939cc5de81ec6ea4684538dbc6bde9c46d4`
 - GitHub Actions หลัก: ผ่าน — lint, unit, Worker, audit, build และ production-preview E2E ใช้เวลา 2 นาที 57 วินาที
 - Worker version ใหม่: `c3fa8f5f-8664-4d0d-a5b2-49f89a1bcbb9`
 - Worker version ก่อน deploy สำหรับ rollback: `97142c17-3011-4804-87da-d3ff637a0e35`

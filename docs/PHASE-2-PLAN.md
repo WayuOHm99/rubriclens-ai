@@ -1,6 +1,6 @@
 # เฟส 2 — บันทึกการเชื่อมระบบแบรนด์เข้ากับเว็บจริง
 
-> **สถานะ:** implemented, ผ่าน local/remote CI และ deploy production แล้ว; PR #1 ยังเป็น Draft รอ owner review/merge
+> **สถานะ:** implemented, ผ่าน local/remote CI, deploy production และ merge PR #1 เข้า `main` แล้ว
 > **อัปเดตล่าสุด:** 9 สิงหาคม 2569
 > **หลักฐาน remote/production:** ดู deployment ID, smoke test, TestSprite และ rollback point ล่าสุดที่ `docs/testing-report.md`
 > **เฟส 1:** `563716c` — สร้างระบบแบรนด์ใน `docs/brand/` โดยยังไม่แตะเว็บ
@@ -214,7 +214,6 @@ python docs/brand/og/render-og.py
 
 ## 7. สิ่งที่ยังรอภายนอกหรือแยกเป็นงานอนาคต
 
-- owner review และ merge Draft PR #1; remote CI หลักผ่านแล้ว และ production deploy จาก source commit ที่ระบุใน `docs/testing-report.md`
 - custom-domain cutover เมื่อ DNS พร้อม (จึงยังไม่เปลี่ยน canonical URL)
 - เปลี่ยนอีเมลติดต่อเป็น domain email หลังตั้ง Email Routing จริง
 - ตรวจว่าการ abort ฝั่งผู้ให้บริการลด quota/cost ได้มากเพียงใดจาก telemetry จริง

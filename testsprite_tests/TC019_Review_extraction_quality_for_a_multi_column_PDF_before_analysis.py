@@ -13,7 +13,9 @@ async def run_test():
     async with async_api.async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
-            args=["--window-size=1280,720", "--disable-dev-shm-usage", "--ipc=host", "--single-process"],
+            # PDF.js needs its Web Worker, so this flow must not use Chromium's
+            # single-process mode; that mode closes the browser during extraction.
+            args=["--window-size=1280,720", "--disable-dev-shm-usage", "--ipc=host"],
         )
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         context.set_default_timeout(15000)
@@ -34,8 +36,8 @@ async def run_test():
             await expect(page.get_by_text(re.compile(r"อาจมีหลายคอลัมน์"))).to_be_visible(timeout=20000)
 
             document_text = page.get_by_label("ข้อความเอกสาร")
-            await expect(document_text).to_have_value(re.compile(r"Left column 1"), timeout=20000)
-            await expect(document_text).to_have_value(re.compile(r"Right column 1"), timeout=20000)
+            await expect(document_text).to_have_value(re.compile(r"Left column line 1"), timeout=20000)
+            await expect(document_text).to_have_value(re.compile(r"Right column line 1"), timeout=20000)
             await expect(page.get_by_role("button", name="ตรวจรายงาน", exact=True)).to_be_enabled()
         finally:
             await context.close()

@@ -13,7 +13,22 @@ async def run_test():
     async with async_api.async_playwright() as playwright:
         # TestSprite's constrained Chromium process closes when PDF.js starts its
         # worker. Firefox exercises the same browser PDF flow without that crash.
-        browser = await playwright.firefox.launch(headless=True)
+        browser = await playwright.firefox.launch(
+            headless=True,
+            env={
+                "HOME": "/tmp",
+                "XDG_CACHE_HOME": "/tmp",
+                "MOZ_HEADLESS": "1",
+                "MOZ_DISABLE_CONTENT_SANDBOX": "1",
+                "MOZ_DISABLE_GPU_SANDBOX": "1",
+                "LIBGL_ALWAYS_SOFTWARE": "1",
+            },
+            firefox_user_prefs={
+                "gfx.webrender.all": False,
+                "gfx.webrender.software": True,
+                "layers.acceleration.disabled": True,
+            },
+        )
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         context.set_default_timeout(15000)
         page = await context.new_page()

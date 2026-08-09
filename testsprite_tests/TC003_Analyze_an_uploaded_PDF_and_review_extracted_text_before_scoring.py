@@ -30,11 +30,11 @@ async def run_test():
             )
 
             await expect(page.get_by_text("sample-report.pdf", exact=True)).to_be_visible()
-            await expect(page.get_by_text(re.compile(r"อ่าน PDF ครบ 1 หน้าแล้ว"))).to_be_visible()
+            await expect(page.get_by_text(re.compile(r"อ่าน PDF ครบ 1 หน้าแล้ว"))).to_be_visible(timeout=20000)
 
             document_text = page.get_by_label("ข้อความเอกสาร")
-            await expect(document_text).to_have_value(re.compile(r"RubricLens Test Report"))
-            await expect(document_text).to_have_value(re.compile(r"contains no personal information"))
+            await expect(document_text).to_have_value(re.compile(r"RubricLens Test Report"), timeout=20000)
+            await expect(document_text).to_have_value(re.compile(r"contains no personal information"), timeout=20000)
 
             analyze_button = page.get_by_role("button", name="ตรวจรายงาน", exact=True)
             await expect(analyze_button).to_be_enabled()

@@ -28,10 +28,17 @@ async def run_test():
             await weight_input.fill("3")
             await page.get_by_role("button", name="ไม่นำมาคิดคะแนน", exact=True).first.click()
 
-            # Draft storage is automatic; wait for the changed title to reach session storage.
-            await page.wait_for_function(
-                "() => sessionStorage.getItem('rubriclensai-session-draft-v1')?.includes('บทนำและบริบท (แก้ไข)')"
-            )
+            # Draft storage is automatic. Poll through Playwright's safe page evaluation
+            # because wait_for_function uses unsafe-eval, which the site's CSP forbids.
+            for _ in range(30):
+                stored_draft = await page.evaluate(
+                    "() => sessionStorage.getItem('rubriclensai-session-draft-v1')"
+                )
+                if stored_draft and "บทนำและบริบท (แก้ไข)" in stored_draft:
+                    break
+                await page.wait_for_timeout(100)
+            else:
+                raise AssertionError("The automatic tab draft did not store the edited rubric.")
             await page.reload()
             await expect(page.locator("#report-text")).to_have_value(re.compile(r"ร่างทดสอบในแท็บนี้"))
 

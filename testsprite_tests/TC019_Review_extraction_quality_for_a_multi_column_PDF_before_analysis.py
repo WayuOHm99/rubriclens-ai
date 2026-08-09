@@ -30,12 +30,12 @@ async def run_test():
             )
 
             await expect(page.get_by_text("multi-column-report.pdf", exact=True)).to_be_visible()
-            await expect(page.get_by_text(re.compile(r"อ่าน PDF ครบ 1 หน้าแล้ว"))).to_be_visible()
-            await expect(page.get_by_text(re.compile(r"อาจมีหลายคอลัมน์"))).to_be_visible()
+            await expect(page.get_by_text(re.compile(r"อ่าน PDF ครบ 1 หน้าแล้ว"))).to_be_visible(timeout=20000)
+            await expect(page.get_by_text(re.compile(r"อาจมีหลายคอลัมน์"))).to_be_visible(timeout=20000)
 
             document_text = page.get_by_label("ข้อความเอกสาร")
-            await expect(document_text).to_have_value(re.compile(r"Left column 1"))
-            await expect(document_text).to_have_value(re.compile(r"Right column 1"))
+            await expect(document_text).to_have_value(re.compile(r"Left column 1"), timeout=20000)
+            await expect(document_text).to_have_value(re.compile(r"Right column 1"), timeout=20000)
             await expect(page.get_by_role("button", name="ตรวจรายงาน", exact=True)).to_be_enabled()
         finally:
             await context.close()

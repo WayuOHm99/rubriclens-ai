@@ -15,11 +15,11 @@
 - `App.tsx` เป็น workflow หลัก: input, PDF preview, rubric editor, analysis progress และ result review
 - `src/components/ui/` เก็บชิ้นส่วน UI แบบ shadcn (alert, badge, button, card, input, progress, textarea) และ `src/lib/utils.ts` เก็บ `cn` ที่ชิ้นส่วนเหล่านี้ใช้ ทั้งคู่ถูกเรียกผ่านชื่อย่อ `@/` ซึ่ง `tsconfig.app.json` และ `vite.config.ts` ชี้ไปที่ `src/`
 - `src/lib/document.ts` เตรียม main text, แยก appendix และประกาศขีดจำกัดไฟล์ทั้งขนาด (10 MB) และจำนวนหน้า (400 หน้า) ไว้ที่เดียวกัน
-- `src/lib/pdf.ts` extract text layer พร้อม progress, abort และ warning สำหรับ scanned/multi-column PDF และตรวจจำนวนหน้าทันทีหลังเปิดไฟล์ก่อนเริ่ม loop
+- `src/lib/pdf.ts` extract text layer พร้อม progress, abort และ warning สำหรับ scanned/multi-column PDF ตรวจจำนวนหน้าทันทีหลังเปิดไฟล์ และหยุดระหว่าง extraction เมื่อเกิน 300,000 ตัวอักษรหรือ text items; การจัดกลุ่มบรรทัดใช้ y-bucket เพื่อไม่ให้จำนวน comparison โตแบบกำลังสอง
 - `src/lib/references.ts` ตรวจ citation/reference ด้วยกฎ deterministic ก่อนส่ง summary ให้ AI
 - `src/lib/rubric.ts` เก็บ templates, schema และ validation ของหัวข้อ/น้ำหนัก
 - `src/lib/analysis.ts` เก็บ response schema, การตรวจ `apiVersion`, mock result และการ format ผลตรวจ
-- `src/lib/analysis-failure.ts` แปลงความล้มเหลวจาก Worker, browser และการตรวจ contract ให้เป็นหมวดที่มีความหมาย (`validation`, `quota`, `compatibility`, `conflict`, `network`, `service`, `unexpected`) โดยแยกหมวดสาเหตุออกจากคำถามว่า “ลองซ้ำแล้วมีโอกาสหายไหม” (`retryable`)
+- `src/lib/analysis-failure.ts` แปลงความล้มเหลวจาก Worker, browser และการตรวจ contract ให้เป็นหมวดที่มีความหมาย (`validation`, `quota`, `compatibility`, `conflict`, `network`, `service`, `unexpected`) แล้วแปลงต่อเป็นนโยบายลองใหม่แบบชัดเจน (`immediate`, `delayed`, `none`) แทนการใช้ `retryable` เพียงค่าเดียวควบคุมทุกปุ่ม
 - `src/lib/site-info.ts` เก็บชื่อเว็บ อีเมลติดต่อ ช่องทางสำรอง ลิขสิทธิ์ สัญญาอนุญาต และ path ของหน้ากฎหมาย ไว้ที่เดียว
 - `src/lib/browser-storage.ts` เก็บ **ชื่อคีย์ทั้งหมดที่ระบบเขียนลงเครื่องผู้ใช้** พร้อมคำอธิบายว่าเก็บไปทำไมและอยู่นานเท่าไร ทั้ง `App.tsx` และหัวข้อคุกกี้ในหน้านโยบายอ่านจากไฟล์นี้ไฟล์เดียว คีย์ชื่อเดิมก่อนเปลี่ยนแบรนด์ถูกทำเครื่องหมาย `isLegacy` เพื่อให้ตารางในนโยบายแสดงเฉพาะของที่ใช้จริง
 - `src/components/SiteFooter.tsx` เป็นท้ายเว็บร่วมของทุกหน้า เหลือเฉพาะลิขสิทธิ์แบรนด์และลิงก์สามทาง (นโยบาย, ข้อกำหนด, ซอร์สโค้ด)
@@ -51,9 +51,9 @@
 - `POST /api/analyze` เป็น boundary เดียวระหว่าง browser กับ Gemini
 - ตรวจ `Content-Type`, request size, idempotency key และ body schema **ก่อน** อ่าน cache หรือเรียก model
 - ใช้ anonymous token + client IP ที่ hash แล้วสำหรับ cost-abuse guard
-- ใช้ KV เก็บ counters และ successful idempotency response แบบ TTL สั้น
+- ใช้ KV เก็บ counter events แบบหนึ่งเหตุการณ์ต่อหนึ่ง key และ successful idempotency response แบบ TTL สั้น
 - เรียก model หลักและ fallback เมื่อ quota/model availability มีปัญหา
-- ครอบการวิเคราะห์หนึ่งคำขอด้วยเพดานรวม 100 วินาที, จำกัด `countTokens` ครั้งละ 10 วินาที และ model request ครั้งละ 60 วินาที โดยใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation ทุกเส้นทาง
+- เริ่มเพดานรวม 100 วินาทีตั้งแต่ขอบ `handleAnalyze`, จำกัด `countTokens` ครั้งละ 10 วินาทีและ model request ครั้งละ 60 วินาที ใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation และมี application-level wait boundary ที่หยุด Worker รอได้แม้ promise ของ SDK ยังไม่จบ
 - ตรวจ AI response ด้วย schema **และคำนวณ overall score ด้วยโค้ดฝั่ง Worker**
 
 ## Where the score is calculated
@@ -133,10 +133,10 @@ User input
 
 | ตัวนับ | นับอะไร | อ่านที่ไหน |
 |--------|---------|-----------|
-| `stats:foreign-script-retries:YYYY-MM-DD` | โมเดลปนภาษา ระบบเลยขอใหม่ | `foreignScriptRetriesToday` |
-| `stats:foreign-script-persisted:YYYY-MM-DD` | ขอใหม่แล้วยังปนอยู่ | `foreignScriptPersistedToday` |
+| `stats:foreign-script-retries:YYYY-MM-DD:event:<uuid>` | โมเดลปนภาษา ระบบเลยขอใหม่ | `foreignScriptRetriesToday` |
+| `stats:foreign-script-persisted:YYYY-MM-DD:event:<uuid>` | ขอใหม่แล้วยังปนอยู่ | `foreignScriptPersistedToday` |
 
-ทั้งคู่มีอายุ 36 ชั่วโมงแล้วหายเอง อ่านได้จาก `GET /api/health?verify=ai` เทียบตัวเลขข้ามวันจะเห็นแนวโน้มจริง การนับล้มเหลว (KV มีปัญหา) **ห้ามทำให้การตรวจเอกสารล้มเหลว** — เสียข้อมูลหนึ่งจุดยอมรับได้ เสียผลตรวจของผู้ใช้ไม่ได้
+แต่ละเหตุการณ์มี key ของตัวเองและอายุ 36 ชั่วโมง จึงไม่มี `get(null) → put(1)` ไปเขียนทับยอดที่สูงกว่าเหมือนตัวนับเดิม ระหว่างย้ายระบบยังอ่านยอด aggregate รุ่นเก่ามารวมแต่ไม่เขียน key รุ่นเก่าอีก อ่านผลรวมได้จาก `GET /api/health?verify=ai` อย่างไรก็ตาม KV ยังเป็น eventual consistency ทำให้รายการเหตุการณ์จากอีกภูมิภาคอาจมาช้า ตัวเลขจึงใช้ดูแนวโน้ม ไม่ใช่หลักฐาน billing แบบทันที การบันทึกล้มเหลว **ห้ามทำให้การตรวจเอกสารล้มเหลว** — เสียข้อมูลหนึ่งจุดยอมรับได้ เสียผลตรวจของผู้ใช้ไม่ได้
 
 ### Idempotency by request digest
 
@@ -149,7 +149,7 @@ User input
 
 ### Token budget accounting
 
-ก่อน application-level model call แต่ละครั้ง ระบบกันงบแบบ conservative โดยใช้ `countTokens` กับ prompt จริงและบังคับ `maxOutputTokens` ตามจำนวนหัวข้อใน rubric การกันงบจึงครอบคลุม chunk pass, consolidation pass, JSON validation retry และการรันซ้ำบน fallback model แยกกัน แต่ไม่ใช่ยอด billing จริงและมองไม่เห็น retry ภายใน SDK
+ก่อน application-level model call แต่ละครั้ง ระบบจองงบแบบ conservative โดยใช้ `countTokens` กับ prompt จริงและบังคับ `maxOutputTokens` ตามจำนวนหัวข้อใน rubric การจองแต่ละครั้งเขียนเป็น event key แยก จึงไม่มี stale/null overwrite แบบ read-modify-write เดิม และครอบคลุม chunk pass, consolidation pass, JSON validation retry กับการรันซ้ำบน fallback model แยกกัน แต่รายการ KV ยังมองเห็นข้ามภูมิภาคช้าได้ ไม่ใช่ hard global ceiling, ไม่ใช่ยอด billing จริง และมองไม่เห็น retry ภายใน SDK
 
 Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ที่เป็น constrained instruction-following เพื่อลด latency และเหลือ generation allowance ให้ JSON ครบภายใน timeout ของ browser
 
@@ -171,7 +171,7 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 | `GET /api/health` | ตอบทันทีจาก env ที่มีอยู่ ไม่ต่อออกนอก | ฟรี |
 | `GET /api/health?verify=ai` | เรียก `countTokens` จริงเพื่อถาม Google ว่า key ยังใช้ได้ไหม แล้วเพิ่ม `aiReachable` กับ `aiCheckCode` | ไม่กิน generation quota |
 
-โหมด verify มีเพดานเวลา 5 วินาที และ cache คำตอบไว้ใน KV 5 นาที เพื่อไม่ให้ endpoint สาธารณะถูกยิงถล่มจนกิน rate limit ที่การตรวจเอกสารจริงต้องใช้ ถ้า key ใช้ไม่ได้จะได้ `status: "degraded"` + HTTP 503 แทนที่จะรายงานว่าปกติ
+โหมด verify ส่ง abort signal ให้ SDK และมี application-level wait boundary 5 วินาทีด้วย จึงคืน `GEMINI_TIMEOUT` แบบ degraded ได้แม้ promise ของ SDK ไม่ยอมจบตาม signal จากนั้น cache คำตอบไว้ใน KV 5 นาที เพื่อไม่ให้ endpoint สาธารณะถูกยิงถล่มจนกิน rate limit ที่การตรวจเอกสารจริงต้องใช้ ถ้า key ใช้ไม่ได้จะได้ `status: "degraded"` + HTTP 503 แทนที่จะรายงานว่าปกติ
 
 คำตอบที่ cache ไว้อาจเก่าได้ถึง 5 นาที ซึ่งอันตรายตอนที่เพิ่งเปลี่ยน key เสร็จ (จะเห็นคำตัดสินที่ตัดสินไว้**ก่อน**เปลี่ยน) ระบบจึงคืน `aiCheckAgeSeconds` มาด้วยเสมอ ถ้าค่านี้มากกว่าเวลาที่ผ่านไปตั้งแต่เปลี่ยน key แปลว่ายังไม่ได้ตรวจของใหม่
 
@@ -181,8 +181,9 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 - **ข้ามแคชเสมอ** — ถ้าอ่านแคชก็จะได้คำตอบเดิมที่ตัวเองเพิ่งเขียนไว้ ตัวเฝ้าจึงต้องยิงถาม Google จริงทุกครั้ง แล้วเขียนแคชทับให้คนที่มาอ่าน `?verify=ai` ต่อได้ประโยชน์
 - **เงียบเมื่อปกติ** — เขียน log ระดับ info เฉยๆ เพราะการแจ้งเตือนที่ดังทุกชั่วโมงคือการแจ้งเตือนที่ไม่มีใครอ่าน
-- **ดังเมื่อพัง** — `console.error` เสมอ และถ้ามี secret `ALERT_WEBHOOK_URL` จะ POST ไปที่ URL นั้นด้วย (รูปแบบ `{content, code}` ซึ่ง Discord และ Slack อ่านได้)
-- **webhook พังไม่ทำให้ตัวเฝ้าพัง** — การยิง webhook ถูกครอบ try/catch และมีเพดานเวลา 5 วินาที
+- **ดังเมื่อพัง** — เขียน `console.error` และยิง webhook **ก่อน** refresh health cache เพื่อให้ KV ล่มแล้วไม่กลืนสัญญาณ outage; payload เป็น `{content, text, code}` (`content` สำหรับ Discord, `text` สำหรับ Slack)
+- **webhook พังไม่ทำให้ตัวเฝ้าพัง** — การยิง webhook ถูกครอบ try/catch, มีเพดานเวลา 5 วินาที และ HTTP non-2xx ถูกนับเป็น `gemini_watch_alert_failed` ไม่ใช่ความสำเร็จเงียบ ๆ
+- **cache พังทำให้ cron run แดงหลังแจ้งเตือนแล้ว** — ช่วยให้ runtime บันทึก scheduled invocation ว่าล้มเหลว แต่ไม่ตัด log/webhook ของ outage ออก
 
 `ALERT_WEBHOOK_URL` **ไม่ได้อยู่ใน `secrets.required`** โดยตั้งใจ เพื่อให้ deploy ได้โดยไม่ต้องเลือกช่องทางแจ้งเตือนก่อน — ไม่ตั้งก็ยังตรวจเจอ แค่ไม่มีข้อความเด้ง
 
@@ -192,7 +193,9 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 ### Resource guards on PDF input
 
-ไฟล์ PDF ถูกจำกัดทั้งขนาด (10 MB) และจำนวนหน้า (400 หน้า) เพราะไฟล์เล็กมากก็สามารถมีหลายพันหน้าได้ และการ extract ทำงานหน้าละหนึ่งรอบบน main thread ระบบตรวจจำนวนหน้าทันทีหลังเปิดเอกสารก่อนเริ่ม loop และยังคืน loading task เสมอผ่าน `finally`
+ไฟล์ PDF ถูกจำกัดขนาด 10 MB, จำนวนหน้า 400 หน้า, ข้อความดิบ/ผลลัพธ์ 300,000 ตัวอักษร และ text items 300,000 รายการ ระบบตรวจจำนวนหน้าทันทีหลังเปิดเอกสาร แล้วตรวจเพดานสะสมทุกหน้าก่อนอ่านหน้าถัดไป พร้อมคืน loading task เสมอผ่าน `finally` การหาแถวใช้ y-bucket และตรวจหลายคอลัมน์ด้วยการ sort ครั้งเดียวต่อแถวแทนการวน/เรียงใหม่ทุก item
+
+ข้อจำกัดที่ยังเหลือ: PDF.js ต้องสร้าง `content.items` ของหน้าปัจจุบันก่อน application code จะนับได้ และการประกอบข้อความยังอยู่บน main thread เพดานใหม่จึงจำกัดความเสียหายและหยุดหน้าถัดไป แต่ไม่รับประกันว่า PDF อันตรายซึ่งอัดทุกอย่างไว้หน้าเดียวจะไม่มี allocation spike เลย
 
 ### Bounded model waiting
 
@@ -200,6 +203,7 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 - `wrangler.jsonc` เปิด `enable_request_signal` เพื่อส่งสัญญาณยกเลิกจาก request เข้า Worker
 - Worker รวมสัญญาณของ request กับเพดานวิเคราะห์รวม 100 วินาที แล้วส่งสัญญาณเดียวกันให้ทุก `countTokens` และ `generateContent`
+- รอบ SDK promise แต่ละจุดมี application-level wait boundary ที่แข่งกับ signal เดียวกัน จึงหยุด workflow ได้ทันทีแม้ retry ภายใน SDK ทำให้ promise ต้นทางยัง pending
 - `countTokens` มีเพดานย่อย 10 วินาที และ model request มีเพดานย่อย 60 วินาที; retry และ fallback ใช้เวลาจากเพดานรวมเดียวกัน ไม่ได้เริ่มนาฬิกาใหม่
 - ถ้าผู้ใช้ยกเลิก ระบบคืน `REQUEST_CANCELLED`; ถ้าชนเพดานรวม ระบบคืน `GEMINI_TIMEOUT` และไม่เริ่ม fallback เพิ่มหลัง deadline
 
@@ -222,6 +226,8 @@ validation, quota, compatibility และ idempotency conflict ยังมี�
 
 ระบบรองรับ malformed JSON, schema mismatch, transient model failure, timeout, cancel, retry, idempotency conflict, consolidation failure และ API version mismatch เพื่อป้องกัน double submission และผลลัพธ์ที่แสดงไม่ครบ ฝั่ง browser จัดหมวดด้วย error code/status ที่บอกความหมาย ไม่ใช้ `retryable` เป็นตัวแทนว่า “ระบบพัง” เพราะ quota อาจลองใหม่ได้แต่ไม่ใช่ outage ขณะที่ config ของบริการอาจเป็น system failure ที่ลองซ้ำเองไม่หาย
 
+ปุ่มลองใหม่ใน alert และปุ่ม “ตรวจรายงาน” ใช้นโยบายเดียวกัน: conflict สร้าง idempotency key ใหม่และลองได้ทันที; network/service timeout และการยกเลิกโดยผู้ใช้พัก 10 วินาที; Gemini congestion พัก 60 วินาที; validation ปลดล็อกเมื่อแก้ข้อมูล; hourly/daily quota, config และ version mismatch ไม่ส่งคำขอเดิมซ้ำแบบไร้ผล ข้อผิดพลาดที่ไม่มี code ใช้ HTTP status เป็น fallback และไม่แสดงข้อความดิบจากระบบภายใน
+
 ## จุดเปราะ — แก้ตรงไหนแล้วเสี่ยงพังที่อื่น
 
 เรียงจากอันตรายที่สุดลงมา "อันตราย" ในที่นี้วัดจาก **โอกาสที่จะพังแบบเงียบ ๆ** (คือระบบยังทำงานต่อได้ ไม่มี error ขึ้น แต่ผลลัพธ์ผิด) เพราะแบบนั้นคือแบบที่จับได้ยากที่สุด
@@ -235,7 +241,7 @@ validation, quota, compatibility และ idempotency conflict ยังมี�
 | 5 | `worker/src/prompt.ts` (~250 บรรทัด) | ข้อความ prompt เป็น "สัญญา" กับ `ANALYSIS_RESPONSE_JSON_SCHEMA` แก้ถ้อยคำแล้วลืมแก้ schema (หรือกลับกัน) โมเดลจะตอบผิดรูป | ผู้ใช้เจอ "ผลลัพธ์ AI ไม่อยู่ในรูปแบบที่ระบบรองรับ" |
 | 6 | `wrangler.jsonc` | ค่าใน `vars` ถูกเขียนทับได้จากหน้าเว็บ Cloudflare dashboard ซึ่งไม่ทิ้งร่องรอยใน git — **เคยพังมาแล้วจริง** (ดู `LESSONS.md` บทที่ 1) | เว็บเรียก API ไม่ได้ ขึ้น `Failed to fetch` ที่ไม่บอกสาเหตุ |
 | 7 | `src/App.tsx` (~800 บรรทัด) | workflow ทั้งหมดอยู่ไฟล์เดียว ตั้งแต่รับไฟล์ แก้ rubric ไปจนถึงแสดงผล state หลายตัวผูกกัน แต่มี `App.test.tsx` (~550 บรรทัด) คุมอยู่พอควร | UI ค้างที่ขั้นตอนใดขั้นตอนหนึ่ง |
-| 8 | `src/lib/pdf.ts` (~128 บรรทัด) | extract ทีละหน้าบน main thread (เธรดเดียวกับที่วาดหน้าจอ) ด่านกันขนาด 10 MB และ 400 หน้าคือสิ่งเดียวที่กันเบราว์เซอร์ค้าง | แท็บค้างไปเลย กดอะไรไม่ได้ |
+| 8 | `src/lib/pdf.ts` | extract ทีละหน้าบน main thread (เธรดเดียวกับที่วาดหน้าจอ) แม้มีด่าน bytes/pages/chars/items และตัดลูปกำลังสองแล้ว แต่ PDF.js ยังสร้าง items ของหน้าปัจจุบันก่อน application code ตรวจได้ | แท็บอาจสะดุดหรือใช้หน่วยความจำสูงกับหน้าเดียวที่ซับซ้อนมาก |
 | 9 | เนื้อหาหน้ากฎหมาย (`src/pages/PrivacyPolicy.tsx`, `TermsOfService.tsx`) | เป็นคำประกาศต่อสาธารณะว่าระบบทำอะไรกับข้อมูลผู้ใช้ ถ้าโค้ดฝั่ง Worker เปลี่ยน (TTL, ขีดจำกัด, ปลายทางที่ส่งข้อมูลไป) แล้วไม่แก้หน้านี้ เอกสารจะกลายเป็นคำประกาศเท็จโดยไม่มีอะไรเตือน ส่วนชื่อคีย์ที่เก็บบนเครื่องผู้ใช้และตัวเลขขีดจำกัดมีเทสต์คุมไว้แล้ว | ไม่เห็นเลยจนกว่าจะมีคนทักท้วง |
 | 10 | `CONTACT_EMAIL` ใน `src/lib/site-info.ts` | เป็นช่องทางติดต่อตามกฎหมายที่ประกาศไว้ทั้งสองหน้า ถ้าอีเมลนี้รับเมลไม่ได้จริง (โดเมนยังไม่ต่อ DNS หรือยังไม่ตั้ง email routing) ผู้ใช้จะส่งแล้วเด้งกลับโดยเราไม่รู้ | เงียบสนิท ไม่มีใครแจ้งได้ว่าติดต่อไม่ได้ |
 
@@ -248,7 +254,7 @@ validation, quota, compatibility และ idempotency conflict ยังมี�
 
 ## Trade-offs and next steps
 
-- KV เป็น eventually consistent; หากต้องการ rate limit แบบ atomic ระดับ production ควรย้าย counters ไป Durable Object
+- counter events แยก key ป้องกัน stale/null overwrite แต่ KV ยังเป็น eventually consistent จึงไม่ใช่ rate limit หรือ cost ceiling แบบ atomic; hard ceiling ต้องพึ่ง provider-side quota/budget alert หรือกลไกประสานการเขียนที่เจ้าของอนุมัติภายหลัง
 - progress ใน UI เป็น estimated progress ไม่ใช่ server-side streaming event
 - MVP ใช้ text layer และไม่ทำ OCR
 - consolidation pass เพิ่มการเรียก model หนึ่งครั้งต่อเอกสารยาว แลกกับความถูกต้องของคะแนนรวม

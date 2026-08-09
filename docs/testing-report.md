@@ -6,7 +6,57 @@
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**
 
-### รอบล่าสุด — 8 สิงหาคม 2026 (Phase 2 + reliability + dependency maintenance, local only)
+### รอบล่าสุด — 9 สิงหาคม 2026 (deadline, counters, retry, monitoring และ PDF performance; local only)
+
+รอบนี้เริ่มจาก `02d6cb2` และตรวจ code commits `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`
+บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ
+production** ผลทั้งหมดด้านล่างจึงรับรอง source/production-preview ในเครื่องเท่านั้น
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
+| Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 118.1 วินาที |
+| Static analysis | `npm run lint` | passed |
+| Unit/component/Worker | `npm run test` | **246/246 passed** ใน 10 test files |
+| Worker bundle and bindings | `npm run worker:check` | passed — dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
+| Production dependency audit | `npm audit --omit=dev --audit-level=high` | **exit code 0 — found 0 vulnerabilities** |
+| Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
+| Production build | `npm run build` (ใน `verify`) | passed — transformed 2,002 modules |
+| Production-preview E2E | `npm run test:e2e` (ใน `verify`) | **96/96 passed** — Chromium, Mobile Chrome, Firefox, WebKit |
+| Diff whitespace | `git diff --check` | passed — ไม่มี whitespace error |
+
+`allowScripts` รอบนี้หมายถึง **ตรวจสี่ package versions ที่ติดตั้งจริงบน environment ปัจจุบันเท่านั้น**:
+`@google/genai@2.15.0`, `esbuild@0.28.1`, `protobufjs@7.6.5` และ
+`workerd@1.20260801.1` การตั้ง `npm allowScripts` เป็นคำแนะนำ (advisory) เว้นแต่เปิด
+`strict-allow-scripts`; optional scripts ของ `fsevents` บน macOS อยู่นอกรายการสี่ตัวที่ตรวจรอบนี้
+และผล install-script review, production dependency audit กับ full-tree audit เป็นหลักฐานคนละเรื่อง
+ห้ามนำผลหนึ่งไปอ้างแทนอีกผลหนึ่ง
+
+หลักฐาน test-first ที่เพิ่มในรอบนี้:
+
+| ปัญหาที่จำลองก่อนแก้ | RED ก่อน production patch | GREEN ล่าสุด |
+| --- | --- | --- |
+| SDK promise ไม่จบหลัง deadline/cancel | Worker 4 failed / 65 | Worker รวม **71/71 passed** |
+| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 246/246 |
+| anonymous token ที่ non-empty แต่รูปแบบเสีย | App 3 failed / 41 | App **41/41 passed** ใน focused run นั้น |
+| stale-null KV, cron cache failure, webhook non-2xx | Worker 7 failed / 70 | Worker **70/70 passed** ก่อนเพิ่ม health deadline |
+| health SDK promise ไม่จบหลัง 5 วินาที | Worker 1 failed / 71 | Worker **71/71 passed** |
+| Slack payload ไม่มี `text` | Worker 1 failed / 71 | Worker **71/71 passed** |
+| PDF chars/items และลูปกำลังสอง | PDF 4 failed / 10 | PDF **13/13 passed**; grouping-equivalence 20,000 randomized cases passed |
+
+TestSprite CLI `0.4.0` และ authentication preflight ใช้ได้กับ project
+`c76aad7a-c7f9-44a8-a888-a842a4cd386e` แต่ **ไม่ได้รัน test กับ URL production** เพราะ code ชุดนี้
+ยังไม่ถูก deploy และ session นี้ไม่มี TestSprite MCP สำหรับ tunnel การยิง CLI ไปที่
+`https://rubriclensai.pages.dev/` ตอนนี้จะตรวจ code รุ่นเก่า จึงบันทึกสถานะเป็น
+`unverified-because-undeployed` ตามจริง
+
+Core Web Vitals (LCP, INP, CLS) ยังไม่ได้วัด เพราะ session นี้ไม่มี Chrome DevTools MCP ตามที่
+`web-perf` ต้องใช้ ไม่ได้ตีความ build size หรือ E2E ว่าเป็นค่าเหล่านี้ CI workflow ถูกตรึง
+`actions/checkout`, `actions/setup-node` และ `actions/upload-artifact` เป็น full commit SHA แล้ว
+แต่ remote CI ยังไม่รันเพราะยังไม่มีการ push
+
+### รอบก่อนหน้า — 8 สิงหาคม 2026 (Phase 2 + reliability + dependency maintenance, local only)
 
 ผลรอบนี้ตรวจซอร์สและ production-preview ในเครื่องเท่านั้น งานยัง **ไม่ได้ push, merge เข้า remote
 หรือ deploy** จึงไม่ใช่หลักฐานว่า production ใช้โค้ดชุดนี้แล้ว

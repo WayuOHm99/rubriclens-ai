@@ -46,8 +46,8 @@ RubricLensAi รับข้อความ (พิมพ์ วาง หรื
 | **เอกสารยาววิเคราะห์สองขั้น** | ขั้นแรกอ่านทีละส่วนพร้อมบอกว่ากำลังอ่านส่วนที่เท่าไร ขั้นที่สองสรุปรวมทั้งเอกสารจาก **structured findings เท่านั้น** ไม่ส่งข้อความซ้ำ และไม่ใช้วิธีเลือกคะแนนสูงสุดจาก chunk ถ้าขั้นสรุปรวมล้มเหลว ระบบคืน `CONSOLIDATION_FAILED` แทนที่จะเงียบ ๆ แสดงคะแนนที่ไม่ครบ |
 | **กันส่งซ้ำด้วย digest ของคำขอ ไม่ใช่แค่ key** | record ที่เก็บมี SHA-256 ของคำขอที่ผ่าน validation แล้ว key เดิม + payload เดิม = คืนผลเดิม ส่วน key เดิม + payload ต่าง = `409 IDEMPOTENCY_CONFLICT` จึงเป็นไปไม่ได้ที่ key ซ้ำจะคืนผลของเอกสารคนอื่น และ body ถูกตรวจก่อนแตะ KV เสมอ |
 | **สัญญาระหว่าง client กับ server มีเลขเวอร์ชัน** | `apiVersion` ถูกประทับโดย Worker ตรวจโดย browser และใช้แยก cache ผลลัพธ์จากเซิร์ฟเวอร์รุ่นเก่าถูก parse ด้วย schema แยก แล้ว upgrade อย่างชัดเจนพร้อมแจ้งผู้ใช้ ไม่ใช่ตีความมั่วแล้วเงียบ |
-| **กันค่าใช้จ่ายก่อนเรียก ไม่ใช่หลังเรียก** | ทุกครั้งก่อนเรียกโมเดลจะกันงบแบบอนุรักษ์นิยมจาก `countTokens` จริง บวกเพดาน `maxOutputTokens` ตามจำนวนหัวข้อ แยกกันระหว่าง chunk pass, consolidation pass, การลองใหม่เมื่อ JSON ผิดรูป และการรันบน fallback model |
-| **PDF ถูกจำกัดทั้งจำนวนหน้าและขนาดไฟล์** | ไฟล์ 200 KB มีได้เป็นพันหน้า และการอ่านทำทีละหน้าบนเธรดเดียวกับที่วาดหน้าจอ ระบบจึงตรวจจำนวนหน้าทันทีหลังเปิดไฟล์ ก่อนเริ่มอ่านหน้าแรก ไฟล์เล็กจึงทำให้แท็บค้างไม่ได้ |
+| **ตรวจงบก่อนเรียกโมเดล** | ทุกครั้งก่อนเรียกโมเดลจะจองงบแบบอนุรักษ์นิยมจาก `countTokens` จริง บวกขีดจำกัด `maxOutputTokens` ตามจำนวนหัวข้อ แยกกันระหว่าง chunk pass, consolidation pass, การลองใหม่เมื่อ JSON ผิดรูป และการรันบน fallback model นี่เป็นด่านปฏิบัติการแบบ best effort ไม่ใช่ hard billing cap เพราะ KV อาจเห็นเหตุการณ์ข้ามภูมิภาคช้าและ retry ภายในผู้ให้บริการยังใช้ทรัพยากรได้ |
+| **PDF ถูกจำกัดทั้งขนาดและปริมาณงาน** | ระบบตรวจขนาดไฟล์ 10 MB กับ 400 หน้าก่อนอ่าน และหยุดระหว่าง extraction เมื่อเกิน 300,000 ตัวอักษรหรือ text items พร้อมตัดลูปจัดบรรทัดแบบกำลังสองออก อย่างไรก็ตาม PDF.js ยังต้องสร้าง items ของหน้าปัจจุบันก่อนโค้ดนับได้ จึงเป็นการจำกัดความเสี่ยง ไม่ใช่คำรับรองว่า PDF ซับซ้อนหน้าเดียวจะไม่ทำให้แท็บสะดุดเลย |
 | **การส่งภาคผนวกต้องยืนยันอย่างชัดเจน** | เมื่อตรวจพบภาคผนวก ระบบหยุด **ก่อน** ยิง request แล้วถามผ่าน dialog ที่เข้าถึงได้ว่าจะส่งหรือไม่ |
 
 ## ภาพหน้าจอ
@@ -148,11 +148,16 @@ npm run dev               # http://localhost:5173
 ถ้าจะทดสอบเส้นทางที่เรียก Worker จริง:
 
 ```bash
-npx wrangler secret put GEMINI_API_KEY
+# สร้าง .dev.vars (Git ignore ไว้แล้ว) แล้วใส่ GEMINI_API_KEY=<คีย์สำหรับ local>
 npm run worker:dev        # รันคู่กับ npm run dev
 ```
 
-ห้ามใส่ Gemini key ใน `VITE_*`, `.env`, source code หรือ commit history — ดู [SECURITY.md](SECURITY.md)
+ห้ามใส่ Gemini key ใน `VITE_*`, source code หรือ commit history ค่า local ให้อยู่เฉพาะใน `.dev.vars`
+ที่ Git ignore — ดู [SECURITY.md](SECURITY.md)
+
+> `npx wrangler secret put GEMINI_API_KEY` **ไม่ใช่คำสั่งตั้งค่า local** คำสั่งนี้สร้าง Worker version
+> และ deploy ขึ้น production ทันที ต้องได้รับอนุมัติการเปลี่ยน production ก่อนทุกครั้ง ดู
+> [deployment runbook](docs/deployment-runbook.md#3-secret-changes-only-when-needed-changes-production)
 
 ```bash
 npm run verify            # ด่านคุณภาพชุดเดียวกับ CI
@@ -167,7 +172,7 @@ npm run screenshots       # สร้างภาพใน docs/screenshots ใ�
 และตอบ v1 ให้ client ที่ส่ง `X-RubricLensAi-Api-Version` จึงไม่มีช่วงที่สองฝั่งเข้าใจสัญญาไม่ตรงกัน
 
 ```text
-Worker dry-run → Worker deploy → health/contract smoke → Pages deploy → browser smoke → TestSprite
+recovery/off-device checkpoint → local gates → Worker dry-run → secret change (ถ้าจำเป็นและได้รับอนุมัติ) → Worker deploy → health/contract smoke → Pages deploy → browser smoke → TestSprite
 ```
 
 `wrangler.jsonc` คือแหล่งความจริงเดียวของรายชื่อโมเดล, KV binding และ variable ที่ไม่ใช่ความลับ

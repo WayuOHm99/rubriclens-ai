@@ -2,7 +2,7 @@
 
 Runbook สำหรับ deploy RubricLensAi ขึ้น production (Cloudflare Worker + Cloudflare Pages)
 
-> **ต้องได้รับคำยืนยันจากเจ้าของโปรเจกต์ก่อนรันขั้นตอนที่ deploy จริงทุกครั้ง** ขั้นตอนที่ 0–1 รันได้อย่างปลอดภัยโดยไม่เปลี่ยนอะไรใน production
+> **ต้องได้รับคำยืนยันจากเจ้าของโปรเจกต์ก่อนรันคำสั่งที่เขียนค่าเข้า production ทุกครั้ง** ขั้นตอนที่ 0–2 ด้านล่างไม่เปลี่ยน Cloudflare production (แม้ขั้น quality gate จะติดตั้งไฟล์ในเครื่องนี้) ส่วน `wrangler secret put` ถือเป็น production mutation (การเปลี่ยนระบบจริง) เพราะ Cloudflare ระบุว่าคำสั่งนี้สร้าง Worker version ใหม่และ deploy ทันที — ดู [Cloudflare Workers: Secrets](https://developers.cloudflare.com/workers/configuration/secrets/#adding-secrets-to-your-project)
 
 Worker และ Pages ถูก deploy แยกกัน รอบนี้ต้องใช้ลำดับ **compatibility Worker ก่อน แล้วจึง Pages เท่านั้น**
 
@@ -24,16 +24,42 @@ idempotency cache แยก namespace ต่อ API version (`:v0`/`:v1`) จึ
 ## Order of operations
 
 ```text
-0. Local quality gate
-1. Worker dry-run
-2. Worker deploy
-3. Health + contract smoke
-4. Pages deploy
-5. Browser smoke
-6. TestSprite suite
+0. Recovery + off-device checkpoint (read-only)
+1. Local quality gate (local only; does not change production)
+2. Worker dry-run (does not change production)
+3. Secret changes, only when needed (changes production)
+4. Worker deploy
+5. Health + contract smoke
+6. Pages deploy
+7. Browser smoke
+8. TestSprite suite
 ```
 
-### 0. Local quality gate
+### 0. Recovery + off-device checkpoint (read-only)
+
+ก่อนเปลี่ยน production ต้องมีสำเนาโค้ดที่กู้จากเครื่องอื่นได้ และต้องรู้แน่ชัดว่าจะย้อนกลับไป version ไหน ตรวจโดยไม่ push หรือ deploy:
+
+```bash
+git status --short
+git branch --show-current
+git rev-parse HEAD
+git remote -v
+git ls-remote --heads origin <branch-name>
+git check-ignore correct/next-session-scope.md
+npx wrangler deployments list
+npx wrangler pages deployment list --project-name rubriclensai
+```
+
+ผ่านขั้นนี้เมื่อครบทุกข้อ:
+
+- working tree สะอาด หรือทุกไฟล์ที่เปลี่ยนถูกรวมไว้ใน commit ที่ตั้งใจ deploy แล้ว
+- branch ปัจจุบันมีอยู่บน remote ที่เชื่อถือได้ และ SHA จาก `git rev-parse HEAD` ตรงกับ SHA ของ branch เดียวกันจาก `git ls-remote` ทุกตัวอักษร ถ้ายังไม่ตรง **ให้หยุดและขออนุมัติก่อน push**
+- `correct/` เป็นโฟลเดอร์ที่ Git ignore ดังนั้นไฟล์อย่าง `correct/next-session-scope.md` **ไม่รวมอยู่ใน remote backup** ให้สำรองเฉพาะบันทึกที่จำเป็นและไม่มีความลับไว้ในที่เก็บนอกเครื่องที่เจ้าของอนุมัติ
+- ไม่มี API key, webhook URL, token, `.env` หรือ `.dev.vars` อยู่ใน commit, Git history หรือไฟล์สำรองที่ไม่ใช่ secret manager
+- บันทึก commit SHA, เวลา deploy, Worker version/deployment ID ปัจจุบัน และ Pages deployment ID ปัจจุบันไว้ใน release record นอกเครื่อง เพื่อให้ rollback ได้แม้เครื่องนี้เสีย
+- ยืนยันว่า commit SHA เดิมกับ `package-lock.json` สามารถใช้สร้าง artifact เดิมซ้ำได้
+
+### 1. Local quality gate (local only; does not change production)
 
 ```bash
 npm ci
@@ -42,7 +68,7 @@ npm run verify
 
 `npm run verify` รัน lint, unit tests, `worker:check`, production dependency audit และ production-preview E2E ด้วยชุดคำสั่งเดียวกับที่ CI ใช้ ต้องผ่านทั้งหมดก่อนไปขั้นต่อไป
 
-### 1. Worker dry-run
+### 2. Worker dry-run (does not change production)
 
 ```bash
 npm run worker:check
@@ -56,15 +82,29 @@ npm run worker:check
 - `ALLOWED_ORIGIN` ตรงกับ Pages domain ที่ใช้จริง
 - KV namespace id ใน `wrangler.jsonc` ตรงกับ namespace ที่ตั้งใจใช้
 
+### 3. Secret changes, only when needed (changes production)
+
+ถ้ารายชื่อ secret ในขั้นที่ 2 ครบและค่าเดิมยังใช้ได้ **ข้ามขั้นนี้** ห้ามรันคำสั่งด้านล่างเพื่อ “เช็กเฉย ๆ”
+
+> **คำเตือน:** `wrangler secret put` สร้าง Worker version ใหม่และ deploy ทันที จึงเปลี่ยน production ก่อนถึงขั้น Worker deploy ปกติ ต้องได้รับคำยืนยันจากเจ้าของโปรเจกต์เป็นรายครั้ง และต้องบันทึก version/deployment ID ก่อนกับหลังคำสั่งเพื่อใช้ rollback
+
+ตั้งหรือหมุน Gemini key เมื่อได้รับอนุมัติแล้วเท่านั้น:
+
+```bash
+npx wrangler secret put GEMINI_API_KEY
+```
+
 **Secret เสริม (ไม่ตั้งก็ deploy ได้):**
 
 ```bash
 npx wrangler secret put ALERT_WEBHOOK_URL
 ```
 
-คือปลายทางที่ตัวเฝ้ารายชั่วโมงจะส่งข้อความไปเมื่อ Gemini เรียกไม่ได้ ใส่ URL ของ Discord หรือ Slack incoming webhook ได้เลย ระบบส่ง `{"content": "...", "code": "..."}` ซึ่งทั้งสองเจ้าอ่านได้ **ถ้าไม่ตั้ง ตัวเฝ้ายังทำงานและยังบันทึกลง Workers Logs เหมือนเดิม แค่ไม่มีข้อความเด้งเข้ามือถือ**
+คือปลายทางที่ตัวเฝ้ารายชั่วโมงจะส่งข้อความไปเมื่อ Gemini เรียกไม่ได้ ใส่ URL ของ Discord หรือ Slack incoming webhook ได้เลย ระบบส่ง `{"content": "...", "text": "...", "code": "..."}` โดย Discord อ่าน `content` และ Slack อ่าน `text` **ถ้าไม่ตั้ง ตัวเฝ้ายังทำงานและยังบันทึกลง Workers Logs เหมือนเดิม แค่ไม่มีข้อความเด้งเข้ามือถือ**
 
-### 2. Worker deploy
+หลังเปลี่ยน secret ให้บันทึก version/deployment ID ที่เกิดขึ้นใหม่และทำ health smoke ในขั้นที่ 5 ก่อน deploy ส่วนอื่น
+
+### 4. Worker deploy
 
 ```bash
 npx wrangler deploy
@@ -72,7 +112,7 @@ npx wrangler deploy
 
 บันทึก **version id** ที่ wrangler แสดงหลัง deploy สำเร็จ และบันทึก version id ของรุ่นก่อนหน้าไว้ด้วย (`npx wrangler deployments list`) เพื่อใช้ rollback
 
-### 3. Health and contract smoke
+### 5. Health and contract smoke
 
 ```bash
 curl -s https://rubriclensai-api.oomzazato01.workers.dev/api/health
@@ -93,7 +133,7 @@ curl -s https://rubriclensai-api.oomzazato01.workers.dev/api/health
 curl -s 'https://rubriclensai-api.oomzazato01.workers.dev/api/health?verify=ai'
 ```
 
-ต้องได้ `"aiReachable":true` และ `"aiCheckCode":"OK"` ถ้าได้ `"aiCheckCode":"AI_CONFIGURATION"` แปลว่า **key ถูกลบหรือถูกปิดไปแล้ว** ให้ตั้ง key ใหม่ด้วย `npx wrangler secret put GEMINI_API_KEY` ก่อนไปต่อ
+ต้องได้ `"aiReachable":true` และ `"aiCheckCode":"OK"` ถ้าได้ `"aiCheckCode":"AI_CONFIGURATION"` แปลว่า **key ถูกลบหรือถูกปิดไปแล้ว** ให้หยุด ขออนุมัติ แล้วกลับไปทำขั้นที่ 3 เพราะ `npx wrangler secret put GEMINI_API_KEY` เปลี่ยน production และ deploy Worker version ใหม่ทันที
 
 ผลถูก cache 5 นาที ให้ดู `"aiCheckAgeSeconds"` ประกอบเสมอ — ถ้าค่านี้มากกว่าจำนวนวินาทีที่ผ่านไปตั้งแต่คุณเปลี่ยน key แปลว่ากำลังอ่านคำตัดสินที่ตัดสินไว้ก่อนเปลี่ยน ให้รอแล้วเรียกใหม่
 
@@ -112,7 +152,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://rubriclensai-api.oomzazato01.wo
 
 ก่อน deploy Pages ให้เปิด Pages รุ่นเดิมและวิเคราะห์ข้อความสังเคราะห์หนึ่งครั้ง เพื่อตรวจว่า compatibility Worker คืน v0 shape ที่ UI เดิมอ่านได้ ห้ามใช้เอกสารจริงหรือข้อมูลส่วนบุคคลในการ smoke test
 
-### 4. Pages deploy
+### 6. Pages deploy
 
 ```bash
 npm run build
@@ -121,7 +161,7 @@ npx wrangler pages deploy dist --project-name rubriclensai --branch main
 
 บันทึก deployment id ที่ได้ และ deployment id ของรุ่นก่อนหน้า
 
-### 5. Browser smoke
+### 7. Browser smoke
 
 รอประมาณหนึ่งนาทีหลัง deploy ก่อนเริ่มตรวจ — edge cache ของ Cloudflare อาจยังคืนของเดิมอยู่ช่วงสั้น ๆ
 (เคยเจอ `/privacy` ตอบเป็นหน้าแรก และ `sitemap.xml` ยังเป็นฉบับก่อน) ถ้าอยากเช็คทันทีให้ยิงที่
@@ -141,7 +181,7 @@ URL ของ deployment (`https://<id>.rubriclensai.pages.dev`) ซึ่งไ
 
 ห้ามใช้เอกสารจริงหรือข้อมูลส่วนบุคคลในการ smoke test
 
-### 6. TestSprite suite
+### 8. TestSprite suite
 
 รันหลัง Pages deploy เสร็จเท่านั้น เพราะ TestSprite CLI ทดสอบ deployed URL:
 

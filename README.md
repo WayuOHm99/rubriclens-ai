@@ -48,8 +48,8 @@ The interesting parts of this project are not the CRUD; they are the failure pat
 | **Long documents get a two-stage pass** | Chunk pass reads each part with positional context; a consolidation pass then judges the rubric across the whole document from the **structured findings only**, never by re-sending the text or by taking the best-scoring chunk. If consolidation fails, the API returns `CONSOLIDATION_FAILED` instead of quietly reporting a partial score. |
 | **Idempotency is bound to the payload, not the key** | The stored record holds a SHA-256 digest of the canonical request. Same key + same payload replays the cached result; same key + *different* payload returns `409 IDEMPOTENCY_CONFLICT` — a replayed key can never hand back another document's result. The body is validated before anything touches KV. |
 | **The client/server contract is versioned** | `apiVersion` is stamped by the Worker, checked by the browser, and partitions the idempotency cache. Responses from an older server are parsed by a separate schema, upgraded explicitly, and flagged to the user rather than silently reinterpreted. |
-| **Cost is capped before the call, not after** | Every model call reserves a conservative budget using real `countTokens` output plus a rubric-sized `maxOutputTokens` cap — separately for the chunk pass, the consolidation pass, JSON-retry and the fallback model. |
-| **PDF input is bounded by pages *and* bytes** | A 200 KB file can hold thousands of pages, and extraction runs one page at a time on the main thread. The page count is checked immediately after the document opens, before the loop starts, so a small file cannot freeze the tab. |
+| **Cost is budget-checked before the call** | Every model call reserves a conservative budget using real `countTokens` output plus a rubric-sized `maxOutputTokens` limit — separately for the chunk pass, the consolidation pass, JSON-retry and the fallback model. This is a best-effort operational guard, not a transactional hard billing cap: KV counters can briefly lag or race, and provider-side retries may still consume work. |
+| **PDF input bounds size and work** | The browser checks 10 MB and 400 pages before extraction, then stops when cumulative raw/output text or text-item work exceeds 300,000. Line grouping no longer grows quadratically. PDF.js must still materialize the current page's items first, so these bounds reduce risk rather than promise that a pathological single page can never stall the tab. |
 | **Sending the appendix is an explicit consent step** | Detecting an appendix stops the flow *before* the network request and asks, in an accessible dialog, whether to send it. |
 
 ## Screenshots
@@ -152,11 +152,16 @@ explorable with no API key and no cost.
 To exercise the real Worker path:
 
 ```bash
-npx wrangler secret put GEMINI_API_KEY
+# Create .dev.vars (already git-ignored) and add: GEMINI_API_KEY=<your-local-key>
 npm run worker:dev        # run alongside `npm run dev`
 ```
 
-Never put a Gemini key in `VITE_*`, `.env`, source, or commit history — see [SECURITY.md](SECURITY.md).
+Never put a Gemini key in `VITE_*`, source, or commit history. Keep the local value only in the
+git-ignored `.dev.vars` file — see [SECURITY.md](SECURITY.md).
+
+> `npx wrangler secret put GEMINI_API_KEY` is **not** a local setup command. It creates a new Worker
+> version and deploys it to production immediately, so run it only with explicit production-change
+> approval; see the [deployment runbook](docs/deployment-runbook.md#3-secret-changes-only-when-needed-changes-production).
 
 ```bash
 npm run verify            # the same quality gates as CI

@@ -7,7 +7,10 @@ from playwright.async_api import expect
 
 async def run_test():
     async with async_api.async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--disable-dev-shm-usage"],
+        )
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         context.set_default_timeout(15000)
         page = await context.new_page()
@@ -25,8 +28,10 @@ async def run_test():
             await weight_input.fill("3")
             await page.get_by_role("button", name="ไม่นำมาคิดคะแนน", exact=True).first.click()
 
-            # Draft storage is intentionally automatic and debounced; there is no Save button.
-            await page.wait_for_timeout(700)
+            # Draft storage is automatic; wait for the changed title to reach session storage.
+            await page.wait_for_function(
+                "() => sessionStorage.getItem('rubriclensai-session-draft-v1')?.includes('บทนำและบริบท (แก้ไข)')"
+            )
             await page.reload()
             await expect(page.locator("#report-text")).to_have_value(re.compile(r"ร่างทดสอบในแท็บนี้"))
 

@@ -112,6 +112,10 @@ describe('POST /api/analyze', () => {
     sdkMocks.clientOptions.length = 0
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns a mock response and calculates the score in code', async () => {
     const response = await worker.fetch(new Request('https://local.test/api/analyze', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': 'test-idempotency-key', [API_VERSION_HEADER]: String(API_VERSION) }, body: JSON.stringify(body) }), { MOCK_ANALYSIS: 'true' })
     const result = await response.json() as { documentType: string; overallScore: number; sections: unknown[]; model: string }
@@ -624,6 +628,8 @@ describe('POST /api/analyze', () => {
   })
 
   it('counts every foreign-script retry so the rate can be measured over time', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-09T12:00:00Z'))
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent
       .mockResolvedValueOnce({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจ評価ควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
@@ -641,6 +647,8 @@ describe('POST /api/analyze', () => {
   })
 
   it('tells the reader when foreign characters survived the retry instead of leaving it unexplained', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-09T12:00:00Z'))
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'ผู้ตรวจ評価ควรดูเพิ่ม', evidence: ['บทนำ'] }]) })
     const rateLimit = new MemoryKv()
@@ -1107,6 +1115,10 @@ describe('GET /api/health with an AI verification', () => {
     sdkMocks.clientOptions.length = 0
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('does not call Google at all for the plain health check', async () => {
     const response = await worker.fetch(new Request('https://local.test/api/health'), geminiEnv())
 
@@ -1164,6 +1176,8 @@ describe('GET /api/health with an AI verification', () => {
   })
 
   it('reports how many reviews needed a language retry today', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-09T12:00:00Z'))
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 3 })
     const rateLimit = new MemoryKv()
     const today = new Date().toISOString().slice(0, 10)

@@ -8,7 +8,7 @@
 
 ### รอบล่าสุด — 9 สิงหาคม 2026 (privacy, mock safety, monitoring, budgets และ Worker type gate; local only)
 
-รอบนี้เริ่มจาก `02d6cb2` และตรวจ production code/config ถึง commit `e41f1a6` รวมการแก้ก่อนหน้า `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `99f546d`, `fae793d`, `9716fe7`, `7eefee0`, `f2621da`, `5a7d619`, `3f3acdf`, `30de2cf` และ `a407fef`
+รอบนี้เริ่มจาก `02d6cb2` และ verify source state ถึง commit `3b9728c` (runtime code ล่าสุดอยู่ที่ `e41f1a6`; CI/docs ล่าสุดอยู่ก่อน commit นี้) รวมการแก้ก่อนหน้า `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `99f546d`, `fae793d`, `9716fe7`, `7eefee0`, `f2621da`, `5a7d619`, `3f3acdf`, `30de2cf` และ `a407fef`
 บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ
 production** ผลทั้งหมดด้านล่างจึงรับรอง source/production-preview ในเครื่องเท่านั้น
 
@@ -16,7 +16,7 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 | --- | --- | --- |
 | Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
 | Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
-| ทั้งชุด | `npm run verify` | **exit code 0** — 89.9 วินาที |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 98.6 วินาที |
 | Static analysis | `npm run lint` | passed |
 | Focused/skipped test guard | `npm run test:modifiers` | passed — ไม่พบ modifier ต้องห้ามใน 44 source/test files |
 | Unit/component/Worker/config | `npm run test` | **264/264 passed** ใน 13 test files |

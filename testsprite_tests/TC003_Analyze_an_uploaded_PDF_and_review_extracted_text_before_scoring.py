@@ -13,9 +13,9 @@ async def run_test():
     async with async_api.async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
-            # PDF.js needs its Web Worker, so this flow must not use Chromium's
-            # single-process mode; that mode closes the browser during extraction.
-            args=["--window-size=1280,720", "--disable-dev-shm-usage", "--ipc=host"],
+            # PDF.js needs its Web Worker. Limit Chromium to one renderer instead
+            # of single-process mode, which closes the browser during extraction.
+            args=["--window-size=1280,720", "--disable-dev-shm-usage", "--renderer-process-limit=1", "--disable-gpu"],
         )
         context = await browser.new_context(viewport={"width": 1280, "height": 720})
         context.set_default_timeout(15000)

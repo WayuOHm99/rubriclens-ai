@@ -161,6 +161,22 @@ npx wrangler pages deploy dist --project-name rubriclensai --branch main
 
 บันทึก deployment id ที่ได้ และ deployment id ของรุ่นก่อนหน้า
 
+### Pull Request preview สำหรับ TestSprite
+
+Pages project `rubriclensai` เป็นแบบ Direct Upload หรือการส่งไฟล์ build ขึ้น Cloudflare โดยตรง จึงไม่มี Git integration ที่สร้าง preview ให้ Pull Request อัตโนมัติ งาน `Deploy safe frontend preview for TestSprite` ใน `.github/workflows/ci.yml` ทำหน้าที่นี้หลังงาน `quality` ผ่าน โดยมีขอบเขตดังนี้:
+
+- รันเฉพาะ Pull Request ที่สร้างจาก branch ใน repository เดียวกัน; Pull Request จาก fork จะถูกข้ามเพื่อไม่ให้โค้ดภายนอกเข้าถึง secret
+- build ด้วย `VITE_USE_MOCK_ANALYSIS=true` เพื่อให้ TestSprite ใช้ผลตัวอย่างที่แน่นอน ไม่เรียก Worker, ไม่ส่งเอกสารไป Gemini และไม่ใช้โควตา AI
+- deploy เป็น Pages preview เท่านั้น ไม่ใช้ `--branch main` และไม่เปลี่ยน production deployment
+- ส่ง URL กลับไปที่ GitHub ในรูปแบบ Deployment เพื่อให้ TestSprite เริ่มรันชุด browser test ที่ตรวจพบแล้ว
+
+Repository ต้องมี GitHub Actions secrets สองชื่อ โดยเก็บเฉพาะใน Settings → Secrets and variables → Actions และห้ามเขียนค่าลงไฟล์หรือ commit:
+
+- `CLOUDFLARE_API_TOKEN` — token ที่มีสิทธิ์ Cloudflare Pages Edit เฉพาะ account ของโปรเจกต์
+- `CLOUDFLARE_ACCOUNT_ID` — account identifier ที่ Wrangler ใช้เลือก account
+
+วิธีตรวจ: เปิดแท็บ Checks ของ Pull Request แล้วรอ `Deploy safe frontend preview for TestSprite` ผ่าน จากนั้นดู Environments/Deployments ของ Pull Request ต้องมี URL รูปแบบ `https://<id>.rubriclensai.pages.dev` และ TestSprite ต้องเปลี่ยนจาก `waiting for deployment` เป็นการรัน test หาก token หมดอายุหรือถูกเพิกถอน ให้สร้าง token ใหม่แล้วแทนค่า Secret เดิม ห้ามแก้ค่าใน workflow
+
 ### 7. Browser smoke
 
 รอประมาณหนึ่งนาทีหลัง deploy ก่อนเริ่มตรวจ — edge cache ของ Cloudflare อาจยังคืนของเดิมอยู่ช่วงสั้น ๆ

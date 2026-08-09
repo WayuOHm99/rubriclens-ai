@@ -2,6 +2,16 @@
 
 รายงานนี้แยกผลตรวจ local/CI ออกจาก production เพื่อให้ตรวจสอบย้อนกลับได้ว่าทดสอบ source และ deployment ใด
 
+## TestSprite Pull Request preview — 9 สิงหาคม 2026
+
+**สถานะ: กำลังตรวจบน Pull Request — ยังไม่ถือว่าผ่านจนกว่าจะมี URL preview และผล TestSprite จริง**
+
+- สาเหตุที่ TestSprite ค้างที่ `15 Tests detected, waiting for deployment`: Cloudflare Pages project `rubriclensai` เป็น Direct Upload (`Git Provider: No`) จึงไม่มีระบบส่ง frontend deployment status กลับไปที่ Pull Request; GitHub Deployments API ก็ยังไม่มีรายการของ Pages
+- เพิ่มงาน GitHub Actions หลัง quality gate เพื่อ build frontend ด้วยข้อมูลตัวอย่าง (`VITE_USE_MOCK_ANALYSIS=true`), deploy เป็น Cloudflare Pages preview และประกาศ URL เป็น GitHub Deployment ให้ TestSprite ใช้
+- งานนี้ไม่แก้ application code, Worker, scoring, API contract, test หรือ library และไม่ deploy production
+- ผลตรวจในเครื่องก่อน push: mock preview build exit code 0; `npm run verify` exit code 0, Vitest 265/265 ผ่าน, production-preview E2E 96/96 ผ่าน, Worker dry-run ผ่าน และ production dependency audit พบ 0 vulnerabilities
+- หลักฐาน live PR, deployment URL และผล TestSprite จะเติมหลัง push และรันจริง
+
 ## TestSprite GitHub integration repair — 9 สิงหาคม 2026
 
 **สถานะ: แก้ “No tests detected” แล้ว — PR #3 แสดง `15 Tests detected, waiting for deployment`**

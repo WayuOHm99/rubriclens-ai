@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { z } from 'zod'
 
 import {
@@ -38,7 +38,15 @@ const QUALITY_EVENT_TTL_SECONDS = 60 * 60 * 36
 const FOREIGN_SCRIPT_RETRIES = 'foreign-script-retries'
 const FOREIGN_SCRIPT_PERSISTED = 'foreign-script-persisted'
 
-type RateLimitStore = Pick<KVNamespace, 'get' | 'put' | 'list'>
+type RateLimitStore = {
+  get(key: string): Promise<string | null>
+  put(key: string, value: string, options?: { expirationTtl?: number; metadata?: unknown }): Promise<void>
+  list(options?: { prefix?: string; limit?: number; cursor?: string }): Promise<{
+    keys: Array<{ name: string; metadata?: unknown }>
+    list_complete: boolean
+    cursor?: string
+  }>
+}
 
 type ModelCallControl = {
   signal: AbortSignal
@@ -46,9 +54,13 @@ type ModelCallControl = {
   deadlineSignal: AbortSignal
 }
 
-export type AnalysisEnv = Partial<Pick<Env,
-  'GEMINI_API_KEY' | 'GEMINI_MODEL' | 'GEMINI_FALLBACK_MODEL' | 'MAX_CHARS' | 'MOCK_ANALYSIS' | 'DAILY_BUDGET_LIMIT' |
-  'DAILY_TOKEN_BUDGET' | 'ALLOWED_ORIGIN'>> & { RATE_LIMIT?: RateLimitStore; ALERT_WEBHOOK_URL?: string }
+type AnalysisConfigKey = 'GEMINI_API_KEY' | 'GEMINI_MODEL' | 'GEMINI_FALLBACK_MODEL' | 'MAX_CHARS' | 'MOCK_ANALYSIS' |
+  'DAILY_BUDGET_LIMIT' | 'DAILY_TOKEN_BUDGET' | 'ALLOWED_ORIGIN'
+
+export type AnalysisEnv = Partial<Record<AnalysisConfigKey, string>> & {
+  RATE_LIMIT?: RateLimitStore
+  ALERT_WEBHOOK_URL?: string
+}
 
 const rubricSectionSchema = z.object({
   id: z.string().trim().min(1).max(100),
@@ -566,7 +578,7 @@ async function generateValidated(
         // Gemini 3 defaults to deeper thinking, which can consume the output
         // allowance and exceed the browser's two-minute request window. Rubric
         // evaluation is constrained instruction-following, so low is enough.
-        thinkingConfig: { thinkingLevel: 'low' },
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       },
     }), control, GEMINI_REQUEST_TIMEOUT_MS)
     return response.text ?? ''

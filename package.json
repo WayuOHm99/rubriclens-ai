@@ -42,7 +42,9 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "verify": "npm run lint && npm run test && npm run worker:check && npm run audit:prod && npm run test:e2e",
     "worker:dev": "wrangler dev",
-    "worker:check": "wrangler deploy --dry-run",
+    "worker:check": "npm run worker:types:check && npm run worker:typecheck && wrangler deploy --dry-run",
+    "worker:typecheck": "tsc -p tsconfig.worker.json",
+    "worker:types:check": "wrangler types worker/env.d.ts --check",
     "worker:types": "wrangler types worker/env.d.ts"
   },
   "dependencies": {

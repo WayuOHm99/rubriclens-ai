@@ -108,7 +108,7 @@ flowchart LR
 | --- | --- | ---: |
 | ตรวจโค้ดแบบสถิต | `npm run lint` | ผ่าน |
 | Unit + component | `npm run test` | **198 / 198** |
-| Worker bundle และ binding | `npm run worker:check` | ผ่าน |
+| ชนิดข้อมูล Worker, generated bindings และ dry-run bundle | `npm run worker:check` | ผ่าน |
 | ตรวจช่องโหว่ของ dependency ที่ใช้จริง | `npm run audit:prod` | **ไม่พบช่องโหว่ (0 รายการ)**<sup>†</sup> |
 | Production build | `npm run build` | ผ่าน |
 | E2E ข้ามเบราว์เซอร์ | `npm run test:e2e` | **96 / 96** |

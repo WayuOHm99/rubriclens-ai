@@ -7,6 +7,7 @@ const sdkMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@google/genai', () => ({
+  ThinkingLevel: { LOW: 'LOW' },
   GoogleGenAI: class {
     constructor(options: unknown) { sdkMocks.clientOptions.push(options) }
     models = { countTokens: sdkMocks.countTokens, generateContent: sdkMocks.generateContent }
@@ -305,7 +306,7 @@ describe('POST /api/analyze', () => {
     expect(sdkMocks.generateContent).toHaveBeenCalledTimes(2)
     expect(sdkMocks.generateContent.mock.calls[0][0].config).not.toHaveProperty('temperature')
     expect(sdkMocks.generateContent.mock.calls[0][0].config.maxOutputTokens).toBe(1500)
-    expect(sdkMocks.generateContent.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'low' })
+    expect(sdkMocks.generateContent.mock.calls[0][0].config.thinkingConfig).toEqual({ thinkingLevel: 'LOW' })
     expect(sdkMocks.generateContent.mock.calls[0][0].contents).toContain('"id":"project"')
     const providerSignals = [
       ...sdkMocks.countTokens.mock.calls.map(([request]) => request.config?.abortSignal),
@@ -368,9 +369,9 @@ describe('POST /api/analyze', () => {
     const rateLimit = new MemoryKv()
     const originalGet = rateLimit.get.bind(rateLimit)
     let blockedIdempotencyRead = false
-    let markKvReadStarted = () => undefined
+    let markKvReadStarted: () => void = () => undefined
     const kvReadStarted = new Promise<void>((resolve) => { markKvReadStarted = resolve })
-    let releaseKvRead = () => undefined
+    let releaseKvRead: () => void = () => undefined
     const kvReadCanFinish = new Promise<void>((resolve) => { releaseKvRead = resolve })
     vi.spyOn(rateLimit, 'get').mockImplementation(async (key) => {
       if (key.startsWith('idempotency:') && !blockedIdempotencyRead) {
@@ -405,7 +406,7 @@ describe('POST /api/analyze', () => {
 
   it('returns promptly when the browser cancels even if the provider promise ignores abort', async () => {
     vi.useFakeTimers()
-    let markProviderStarted = () => undefined
+    let markProviderStarted: () => void = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
     sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
     const controller = new AbortController()
@@ -434,7 +435,7 @@ describe('POST /api/analyze', () => {
     vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
-    let markProviderStarted = () => undefined
+    let markProviderStarted: () => void = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
     sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
     const rateLimit = new MemoryKv()
@@ -462,7 +463,7 @@ describe('POST /api/analyze', () => {
     vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
-    let markProviderStarted = () => undefined
+    let markProviderStarted: () => void = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
@@ -498,7 +499,7 @@ describe('POST /api/analyze', () => {
       if (milliseconds === 60_000) return generationDeadline.signal
       throw new Error(`Unexpected timeout in test: ${milliseconds}`)
     })
-    let markPrimaryStarted = () => undefined
+    let markPrimaryStarted: () => void = () => undefined
     const primaryStarted = new Promise<void>((resolve) => { markPrimaryStarted = resolve })
     sdkMocks.countTokens.mockImplementation(({ model }) => model === 'primary-model'
       ? providerPromiseThatIgnoresAbort(markPrimaryStarted)
@@ -537,7 +538,7 @@ describe('POST /api/analyze', () => {
       if (milliseconds === 60_000) return generationDeadlineCall++ === 0 ? primaryGenerationDeadline.signal : fallbackGenerationDeadline.signal
       throw new Error(`Unexpected timeout in test: ${milliseconds}`)
     })
-    let markPrimaryStarted = () => undefined
+    let markPrimaryStarted: () => void = () => undefined
     const primaryStarted = new Promise<void>((resolve) => { markPrimaryStarted = resolve })
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent.mockImplementation(({ model }) => model === 'primary-model'
@@ -567,9 +568,9 @@ describe('POST /api/analyze', () => {
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
     const rateLimit = new MemoryKv()
     const originalPut = rateLimit.put.bind(rateLimit)
-    let markBudgetChargeStarted = () => undefined
+    let markBudgetChargeStarted: () => void = () => undefined
     const budgetChargeStarted = new Promise<void>((resolve) => { markBudgetChargeStarted = resolve })
-    let releaseBudgetCharge = () => undefined
+    let releaseBudgetCharge: () => void = () => undefined
     const budgetChargeCanFinish = new Promise<void>((resolve) => { releaseBudgetCharge = resolve })
     vi.spyOn(rateLimit, 'put').mockImplementation(async (key, value) => {
       if (key.startsWith('budget:tokens:')) {
@@ -706,7 +707,7 @@ describe('installed Google SDK abort behavior', () => {
     vi.useFakeTimers()
     const { GoogleGenAI: InstalledGoogleGenAI } = await vi.importActual<typeof import('@google/genai')>('@google/genai')
     const controller = new AbortController()
-    let markFetchStarted = () => undefined
+    let markFetchStarted: () => void = () => undefined
     const firstFetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve })
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       markFetchStarted()
@@ -1128,7 +1129,7 @@ describe('GET /api/health with an AI verification', () => {
     vi.useFakeTimers()
     const healthDeadline = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(healthDeadline.signal)
-    let markProviderStarted = () => undefined
+    let markProviderStarted: () => void = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
     sdkMocks.countTokens.mockImplementation(() => providerPromiseThatIgnoresAbort(markProviderStarted))
 

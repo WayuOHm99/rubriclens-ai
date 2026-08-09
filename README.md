@@ -110,7 +110,7 @@ cache, and 10-minute idempotency records. Full notes, including the *"which file
 | --- | --- | ---: |
 | Static analysis | `npm run lint` | passed |
 | Unit + component | `npm run test` | **198 / 198** |
-| Worker bundle and bindings | `npm run worker:check` | passed |
+| Worker types, generated bindings and dry-run bundle | `npm run worker:check` | passed |
 | Production dependency audit | `npm run audit:prod` | **found 0 vulnerabilities**<sup>†</sup> |
 | Production build | `npm run build` | passed |
 | Cross-browser E2E | `npm run test:e2e` | **96 / 96** |

@@ -53,7 +53,7 @@
 - ใช้ anonymous token + client IP ที่ hash แล้วสำหรับ cost-abuse guard
 - ใช้ KV เก็บ counter events แบบหนึ่งเหตุการณ์ต่อหนึ่ง key และ successful idempotency response แบบ TTL สั้น
 - เรียก model หลักและ fallback เมื่อ quota/model availability มีปัญหา
-- เริ่มเพดานรวม 100 วินาทีตั้งแต่ขอบ `handleAnalyze`, จำกัด `countTokens` ครั้งละ 10 วินาทีและ model request ครั้งละ 60 วินาที ใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation และมี application-level wait boundary ที่หยุด Worker รอได้แม้ promise ของ SDK ยังไม่จบ
+- เริ่มเพดานรวม 100 วินาทีตั้งแต่ขอบ `handleAnalyze`, จำกัด `countTokens` ครั้งละ 10 วินาทีและ model request ครั้งละ 60 วินาที ใช้ `AbortSignal` ชุดเดียวกับ primary, fallback, retry, chunk และ consolidation พร้อม application-level wait boundary แยกที่ 10/60/100 วินาที จึงหยุด Worker รอได้แม้ promise ของ SDK ยังไม่จบ; timeout ราย call ยังลอง fallback ได้ถ้าเพดานรวมเหลือ แต่ timeout/cancel ของเพดานรวมจะไม่เริ่ม provider call ถัดไป
 - ตรวจ AI response ด้วย schema **และคำนวณ overall score ด้วยโค้ดฝั่ง Worker**
 
 ## Where the score is calculated
@@ -203,7 +203,7 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 - `wrangler.jsonc` เปิด `enable_request_signal` เพื่อส่งสัญญาณยกเลิกจาก request เข้า Worker
 - Worker รวมสัญญาณของ request กับเพดานวิเคราะห์รวม 100 วินาที แล้วส่งสัญญาณเดียวกันให้ทุก `countTokens` และ `generateContent`
-- รอบ SDK promise แต่ละจุดมี application-level wait boundary ที่แข่งกับ signal เดียวกัน จึงหยุด workflow ได้ทันทีแม้ retry ภายใน SDK ทำให้ promise ต้นทางยัง pending
+- รอบ SDK promise แต่ละจุดมี application-level wait boundary ที่แข่งกับทั้ง shared signal และเพดานย่อยของ call นั้น ขณะที่ SDK ยังรับ shared signal กับ HTTP timeout เดิม จึงหยุด workflow ได้ตรง 10/60/100 วินาทีแม้ retry ภายใน SDK ทำให้ promise ต้นทางยัง pending
 - `countTokens` มีเพดานย่อย 10 วินาที และ model request มีเพดานย่อย 60 วินาที; retry และ fallback ใช้เวลาจากเพดานรวมเดียวกัน ไม่ได้เริ่มนาฬิกาใหม่
 - ถ้าผู้ใช้ยกเลิก ระบบคืน `REQUEST_CANCELLED`; ถ้าชนเพดานรวม ระบบคืน `GEMINI_TIMEOUT` และไม่เริ่ม fallback เพิ่มหลัง deadline
 

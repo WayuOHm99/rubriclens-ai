@@ -8,7 +8,7 @@
 
 ### รอบล่าสุด — 9 สิงหาคม 2026 (deadline, counters, retry, monitoring และ PDF performance; local only)
 
-รอบนี้เริ่มจาก `02d6cb2` และตรวจ code commits `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`
+รอบนี้เริ่มจาก `02d6cb2` และตรวจ code commits `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `fae793d`
 บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ
 production** ผลทั้งหมดด้านล่างจึงรับรอง source/production-preview ในเครื่องเท่านั้น
 
@@ -16,9 +16,9 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 | --- | --- | --- |
 | Reproducible install | `npm ci` | **exit code 0** — added 593 packages, audited 594 packages, found 0 vulnerabilities |
 | Dependency install scripts | `npm approve-scripts --allow-scripts-pending` | **exit code 0** — `No packages with unreviewed install scripts.` |
-| ทั้งชุด | `npm run verify` | **exit code 0** — 118.1 วินาที |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 114.4 วินาที |
 | Static analysis | `npm run lint` | passed |
-| Unit/component/Worker | `npm run test` | **246/246 passed** ใน 10 test files |
+| Unit/component/Worker | `npm run test` | **248/248 passed** ใน 10 test files |
 | Worker bundle and bindings | `npm run worker:check` | passed — dry-run ด้วย `wrangler 4.120.0`, ไม่ deploy |
 | Production dependency audit | `npm audit --omit=dev --audit-level=high` | **exit code 0 — found 0 vulnerabilities** |
 | Full dependency-tree audit | `npm audit` | **exit code 0 — found 0 vulnerabilities** |
@@ -37,8 +37,9 @@ production** ผลทั้งหมดด้านล่างจึงรั�
 
 | ปัญหาที่จำลองก่อนแก้ | RED ก่อน production patch | GREEN ล่าสุด |
 | --- | --- | --- |
-| SDK promise ไม่จบหลัง deadline/cancel | Worker 4 failed / 65 | Worker รวม **71/71 passed** |
-| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 246/246 |
+| SDK promise ไม่จบหลัง aggregate deadline/cancel | Worker 4 failed / 65 | Worker รวมปัจจุบัน **73/73 passed** |
+| SDK promise ไม่จบหลังเพดานย่อย 10/60 วินาที | Worker 2 failed / 73 | Worker **73/73 passed** โดยยังเริ่ม fallback เดิมได้เมื่อ aggregate deadline ยังเหลือ |
+| retry/status-only/cooldown ฝั่ง browser | 19 failed / 85 และ follow-up 3 failed / 99 | frontend focused **99/99 passed** ก่อนเพิ่ม token/conflict coverage; full suite ด้านบน 248/248 |
 | anonymous token ที่ non-empty แต่รูปแบบเสีย | App 3 failed / 41 | App **41/41 passed** ใน focused run นั้น |
 | stale-null KV, cron cache failure, webhook non-2xx | Worker 7 failed / 70 | Worker **70/70 passed** ก่อนเพิ่ม health deadline |
 | health SDK promise ไม่จบหลัง 5 วินาที | Worker 1 failed / 71 | Worker **71/71 passed** |

@@ -505,8 +505,8 @@ function waitForAbortableProviderPromise<T>(providerPromise: Promise<T>, signal:
 }
 
 /**
- * Stops the Worker waiting as soon as its shared signal aborts, even when the
- * SDK keeps its own retry promise pending. The provider promise keeps a reject
+ * Stops the Worker waiting as soon as the supplied application boundary aborts,
+ * even when the SDK keeps its own retry promise pending. The provider promise keeps a reject
  * handler attached because aborting this wait cannot guarantee that provider
  * work, retries or billing stop at the same moment.
  */

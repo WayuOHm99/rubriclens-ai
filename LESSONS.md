@@ -32,7 +32,7 @@
 
 **การป้องกันเพิ่ม:** commit `0f5393a` — 2026-08-08 เพิ่มเพดานฝั่ง Worker แทนการพึ่ง timeout ของ browser อย่างเดียว การวิเคราะห์หนึ่งคำขอมีเพดานรวม 100 วินาที, `countTokens` มีเพดาน 10 วินาที และ model request มีเพดาน 60 วินาที สัญญาณยกเลิกชุดเดียวถูกส่งผ่าน primary model, fallback, retry, chunk และ consolidation โดย `wrangler.jsonc` เปิด `enable_request_signal` ให้ Worker รับการยกเลิกจาก browser ได้
 
-**แก้เพิ่มรอบนี้:** การส่ง abort signal ให้ SDK อย่างเดียวยังไม่ใช่เพดานเวลารอ เพราะ SDK อาจ retry ต่อและปล่อย promise ค้าง จึงเพิ่ม application-level wait boundary รอบทุก `countTokens`/`generateContent` และเริ่มนาฬิการวมตั้งแต่เข้า `handleAnalyze` ก่อน validation/KV/provider preparation; health probe 5 วินาทีก็ใช้หลักเดียวกัน
+**แก้เพิ่มรอบนี้:** การส่ง abort signal ให้ SDK อย่างเดียวยังไม่ใช่เพดานเวลารอ เพราะ SDK อาจ retry ต่อและปล่อย promise ค้าง จึงเพิ่ม application-level wait boundary รอบทุก `countTokens`/`generateContent` ที่ 10/60 วินาที และเริ่มนาฬิการวม 100 วินาทีตั้งแต่เข้า `handleAnalyze` ก่อน validation/KV/provider preparation timeout ราย call ยังใช้ fallback เดิมได้ตราบใดที่เวลารวมยังเหลือ แต่ deadline รวม/cancel จะไม่เริ่ม provider call ถัดไป; health probe 5 วินาทีก็ใช้หลักเดียวกัน
 
 เหตุผลที่ต้องมีหลายชั้นคือการที่ browser หยุดรอไม่ได้แปลว่า Worker และ Gemini หยุดเองโดยอัตโนมัติ ถ้าไม่มี deadline ฝั่ง Worker งานอาจทำต่อหลังผู้ใช้เห็น timeout แล้วและยังกินโควตา ส่วนการ abort ที่ส่งถึง SDK ก็รับประกันได้เพียงว่าฝั่ง client/Worker หยุดรอ ผู้ให้บริการอาจทำงานที่รับไปแล้วต่อและคิดค่าใช้จ่ายได้ จึงห้ามอ้างว่า “ผู้ใช้กดยกเลิก = billing ถูกยกเลิกแน่นอน”
 

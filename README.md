@@ -212,7 +212,7 @@ scripts/screenshots/ Playwright capture run for the images in this README
 public/              Static assets, security headers, sitemap, 404 page, social preview
 docs/                Architecture, deployment runbook, testing report, screenshots
 .testsprite/         TestSprite project config and 11 scenario plans
-.github/workflows/   CI quality gate
+.github/             CI quality gate + owner-readable pull request template
 ```
 
 ## Security and privacy

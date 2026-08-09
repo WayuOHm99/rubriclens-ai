@@ -205,7 +205,7 @@ scripts/screenshots/ สคริปต์เก็บภาพหน้าจ�
 public/              static assets, security headers, sitemap, หน้า 404 และ social preview
 docs/                สถาปัตยกรรม, ขั้นตอน deploy, รายงานการทดสอบ, ภาพหน้าจอ
 .testsprite/         config และ 11 scenario plans ของ TestSprite
-.github/workflows/   CI quality gate
+.github/             ด่าน CI + แบบฟอร์ม pull request ที่เจ้าของอ่านได้
 ```
 
 ## ความปลอดภัยและความเป็นส่วนตัว

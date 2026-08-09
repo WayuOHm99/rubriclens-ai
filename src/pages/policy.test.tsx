@@ -57,6 +57,13 @@ describe('หน้านโยบายความเป็นส่วนต�
     expect(pageText()).toContain('Cloudflare Workers')
   })
 
+  it('บอกว่าภาคผนวกที่ยืนยันตัดออกจะไม่ออกจากเบราว์เซอร์', () => {
+    render(<PrivacyPolicy />)
+
+    expect(pageText()).toContain('ตัดภาคผนวกออกในเบราว์เซอร์ก่อนสร้างคำขอ')
+    expect(pageText()).toContain('ไม่ถูกส่งไปยัง Cloudflare หรือ Google Gemini')
+  })
+
   it('บอกอายุของข้อมูลชั่วคราวบนเซิร์ฟเวอร์ตามที่โค้ดตั้งไว้จริง', () => {
     render(<PrivacyPolicy />)
 

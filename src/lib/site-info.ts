@@ -22,4 +22,4 @@ export const PRIVACY_POLICY_PATH = '/privacy'
 export const TERMS_PATH = '/terms'
 
 // วันที่นโยบายและข้อกำหนดฉบับปัจจุบันมีผล — แก้ทุกครั้งที่แก้เนื้อหา
-export const POLICY_LAST_UPDATED_LABEL = '4 สิงหาคม 2569'
+export const POLICY_LAST_UPDATED_LABEL = '9 สิงหาคม 2569'

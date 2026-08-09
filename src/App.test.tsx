@@ -167,13 +167,17 @@ describe('App', () => {
     expect(screen.getByText(/ยังไม่ได้ส่งเอกสาร/)).toBeInTheDocument()
   })
 
-  it('analyzes only after appendix exclusion is explicitly confirmed', async () => {
+  it('sends only the main document after appendix exclusion is explicitly confirmed', async () => {
+    const fetchMock = stubApi(apiResult({ documentInfo: { appendixExcluded: true, excludedCharCount: 20 } }))
     const user = userEvent.setup()
     render(<App />)
     await user.type(screen.getByLabelText('ข้อความเอกสาร'), 'บทนำ\nเนื้อหาหลัก\n\nภาคผนวก ก\nข้อมูลดิบ')
     await user.click(screen.getByRole('button', { name: 'ตรวจรายงาน' }))
     await user.click(screen.getByRole('button', { name: 'ยืนยันและส่งตรวจ' }))
     expect(await screen.findByRole('region', { name: 'ผลวิเคราะห์' })).toBeInTheDocument()
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(requestBody.reportText).toBe('บทนำ\nเนื้อหาหลัก')
+    expect(requestBody.reportText).not.toContain('ข้อมูลดิบ')
   })
 
   it('restores a draft only from the current browser session', () => {

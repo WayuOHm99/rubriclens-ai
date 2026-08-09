@@ -189,7 +189,7 @@ Gemini 3 ใช้ `thinkingLevel: low` สำหรับงาน rubric ท�
 
 ### Explicit appendix consent
 
-เมื่อพบ appendix ระบบหยุดก่อน network request และแสดง accessible dialog ผู้ใช้เลือก “กลับไปแก้ข้อความ” หรือ “ยืนยันและส่งตรวจ” ได้อย่างชัดเจน
+เมื่อพบ appendix ระบบหยุดก่อน network request และแสดง accessible dialog ผู้ใช้เลือก “กลับไปแก้ข้อความ” หรือ “ยืนยันและส่งตรวจ” ได้อย่างชัดเจน เมื่อยืนยัน browser จะส่งเฉพาะ `preparedDocument.mainText`; ข้อความ appendix จึงไม่ออกจากเครื่องผู้ใช้ไปถึง Cloudflare หรือ Gemini ส่วน Worker ยังเรียก `prepareWorkerDocument()` ซ้ำเป็นแนวป้องกันชั้นที่สองสำหรับ client อื่นที่อาจส่งข้อความดิบเข้ามาเอง
 
 ### Resource guards on PDF input
 

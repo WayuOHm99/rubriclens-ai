@@ -427,6 +427,9 @@ function App() {
     if (preparedDocument.appendixHeading && excludeAppendix) {
       setAppendixConfirmed(true)
     }
+    const reportTextSentForAnalysis = preparedDocument.appendixHeading && excludeAppendix
+      ? preparedDocument.mainText
+      : text
 
     const controller = new AbortController()
     analysisAbortRef.current = controller
@@ -458,7 +461,7 @@ function App() {
             method: 'POST', signal: controller.signal,
             headers: { 'content-type': 'application/json', 'Idempotency-Key': idempotencyKeyRef.current, [API_VERSION_HEADER]: String(API_VERSION) },
             body: JSON.stringify({
-              reportText: text,
+              reportText: reportTextSentForAnalysis,
               documentType,
               anonymousToken,
               rubric: { version: rubricVersion, sections: rubric },

@@ -160,7 +160,11 @@ test('appendix exclusion is explicit in a confirmation dialog', async ({ page })
   await expect(page.getByText(/ยังไม่ได้ส่งเอกสาร/)).toBeVisible()
 
   await page.getByRole('button', { name: 'ตรวจรายงาน' }).click()
+  const analyzeRequest = page.waitForRequest(ANALYZE_ROUTE)
   await page.getByRole('button', { name: 'ยืนยันและส่งตรวจ' }).click()
+  const requestBody = (await analyzeRequest).postDataJSON()
+  expect(requestBody.reportText).toBe('บทนำ\nเนื้อหาหลักสำหรับประเมินโครงสร้างรายงาน')
+  expect(requestBody.reportText).not.toContain('ข้อมูลดิบที่ไม่ควรส่งไปวิเคราะห์')
   await expect(page.getByRole('region', { name: 'ผลวิเคราะห์' })).toBeVisible()
 })
 

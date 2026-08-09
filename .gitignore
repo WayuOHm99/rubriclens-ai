@@ -39,4 +39,6 @@ worker-startup.cpuprofile
 
 # Local working notes
 correct/
-testsprite_tests/tmp/
+# TestSprite's GitHub runner needs the sanitized result index to match TC files.
+testsprite_tests/tmp/*
+!testsprite_tests/tmp/test_results.json

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import os
 import re
 
 from playwright import async_api
@@ -16,6 +17,7 @@ async def run_test():
         browser = await playwright.firefox.launch(
             headless=True,
             env={
+                **os.environ,
                 "HOME": "/tmp",
                 "XDG_CACHE_HOME": "/tmp",
                 "MOZ_HEADLESS": "1",

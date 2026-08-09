@@ -193,6 +193,20 @@ Test คือเครื่องมือชิ้นเดียวที่
   - **แก้ค่า env ผ่านหน้าเว็บ Cloudflare dashboard** → `ALLOWED_ORIGIN` ถูกเขียนทับจนเว็บจริงเรียก API ไม่ได้ ขึ้น `Failed to fetch` แบบไม่บอกสาเหตุ **ให้ `wrangler.jsonc` เป็นแหล่งความจริงเดียวเสมอ** (commit `fc59089`)
   - **Gemini ตอบช้าจนค้าง** → ต้องมีการจำกัดเวลารอทุกครั้งที่เรียก model (commit `1cfc762`)
 
+## Agent skills
+
+### Issue tracker
+
+งานและข้อกำหนดของโปรเจกต์ติดตามใน GitHub Issues ดูรายละเอียดที่ `docs/agents/issue-tracker.md`
+
+### Triage labels
+
+ใช้ป้ายกำกับมาตรฐาน 5 สถานะสำหรับคัดแยกงาน ดูรายละเอียดที่ `docs/agents/triage-labels.md`
+
+### Domain docs
+
+ใช้เอกสารโดเมนแบบชุดเดียวที่รากโปรเจกต์ ดูรายละเอียดที่ `docs/agents/domain.md`
+
 ---
 
 <!-- BEGIN TESTSPRITE AGENT SECTION (testsprite agent install codex) -->

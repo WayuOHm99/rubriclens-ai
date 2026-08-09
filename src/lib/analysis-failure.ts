@@ -221,7 +221,3 @@ export function normalizeUnexpectedAnalysisError(cause: unknown) {
     cause,
   })
 }
-
-export function shouldShowOfflineMascot(category: AnalysisFailureCategory) {
-  return category === 'network' || category === 'service' || category === 'unexpected'
-}

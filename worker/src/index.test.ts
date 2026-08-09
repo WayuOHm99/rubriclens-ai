@@ -203,7 +203,7 @@ describe('POST /api/analyze', () => {
     expect(blocked.status).toBe(429)
   })
 
-  it('does not let a stale null KV counter read erase hourly usage', async () => {
+  it('ยอดใช้งานรายชั่วโมงไม่ลดลงเมื่อระบบอ่านค่าที่ล้าสมัยว่าไม่พบข้อมูล', async () => {
     const rateLimit = new StaleCounterReadKv()
     const env = { MOCK_ANALYSIS: 'true', RATE_LIMIT: rateLimit } satisfies AnalysisEnv
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -217,7 +217,7 @@ describe('POST /api/analyze', () => {
     expect((await blocked.json() as { code: string }).code).toBe('RATE_LIMITED')
   })
 
-  it('does not let a stale null KV counter read erase the daily request budget', async () => {
+  it('ยอดคำขอรายวันไม่ลดลงเมื่อระบบอ่านค่าที่ล้าสมัยว่าไม่พบข้อมูล', async () => {
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
     const rateLimit = new StaleCounterReadKv()
@@ -233,7 +233,7 @@ describe('POST /api/analyze', () => {
     expect(sdkMocks.generateContent).toHaveBeenCalledTimes(1)
   })
 
-  it('does not let a stale null KV counter read erase reserved token usage', async () => {
+  it('ยอดข้อความที่จองไว้ไม่ลดลงเมื่อระบบอ่านค่าที่ล้าสมัยว่าไม่พบข้อมูล', async () => {
     sdkMocks.countTokens.mockResolvedValue({ totalTokens: 200 })
     sdkMocks.generateContent.mockResolvedValue({ text: modelResponse([{ id: 'introduction', score: 2, reason: 'พบเนื้อหา' }]) })
     const rateLimit = new StaleCounterReadKv()
@@ -408,7 +408,7 @@ describe('POST /api/analyze', () => {
     }
   })
 
-  it('returns promptly when the browser cancels even if the provider promise ignores abort', async () => {
+  it('ระบบหยุดรอทันทีเมื่อผู้ใช้ยกเลิก แม้บริการ AI ยังไม่ตอบสนอง', async () => {
     vi.useFakeTimers()
     let markProviderStarted: () => void = () => undefined
     const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve })
@@ -435,7 +435,7 @@ describe('POST /api/analyze', () => {
     }
   })
 
-  it('returns promptly from token counting without fallback when the Worker deadline expires and the provider promise ignores abort', async () => {
+  it('ระบบคืนผลหมดเวลาโดยไม่ลองโมเดลสำรอง เมื่อเวลารวมหมดระหว่างวัดขนาดเอกสาร', async () => {
     vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
@@ -463,7 +463,7 @@ describe('POST /api/analyze', () => {
     }
   })
 
-  it('returns promptly from generation without fallback or correction when the Worker deadline expires and the provider promise ignores abort', async () => {
+  it('ระบบคืนผลหมดเวลาโดยไม่ลองซ้ำ เมื่อเวลารวมหมดระหว่างตรวจเอกสาร', async () => {
     vi.useFakeTimers()
     const deadlineController = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadlineController.signal)
@@ -490,7 +490,7 @@ describe('POST /api/analyze', () => {
     }
   })
 
-  it('stops waiting at the 10-second token-count boundary and starts the existing fallback even when the provider promise ignores timeout', async () => {
+  it('ระบบหยุดวัดขนาดเอกสารหลัง 10 วินาทีแล้วลองโมเดลสำรอง', async () => {
     vi.useFakeTimers()
     const aggregateDeadline = new AbortController()
     const primaryTokenDeadline = new AbortController()
@@ -528,7 +528,7 @@ describe('POST /api/analyze', () => {
     }
   })
 
-  it('stops waiting at the 60-second generation boundary and starts the existing fallback even when the provider promise ignores timeout', async () => {
+  it('ระบบหยุดรอผลตรวจหลัง 60 วินาทีแล้วลองโมเดลสำรอง', async () => {
     vi.useFakeTimers()
     const aggregateDeadline = new AbortController()
     const primaryGenerationDeadline = new AbortController()
@@ -711,7 +711,7 @@ describe('installed Google SDK abort behavior', () => {
     vi.useRealTimers()
   })
 
-  it('retries an aborted request internally, proving a full SDK mock cannot verify the Worker deadline', async () => {
+  it('เครื่องมือเรียก Gemini ลองคำขอที่ถูกยกเลิกซ้ำภายใน จึงต้องมีด่านหมดเวลาของระบบเอง', async () => {
     vi.useFakeTimers()
     const { GoogleGenAI: InstalledGoogleGenAI } = await vi.importActual<typeof import('@google/genai')>('@google/genai')
     const controller = new AbortController()
@@ -1137,7 +1137,7 @@ describe('GET /api/health with an AI verification', () => {
     expect(sdkMocks.clientOptions[0]).toMatchObject({ httpOptions: { timeout: 5000 } })
   })
 
-  it('returns a degraded health result promptly when the provider promise ignores the health deadline', async () => {
+  it('หน้าตรวจสุขภาพรายงานว่าระบบมีปัญหาโดยไม่รอบริการ AI ที่ค้างอยู่', async () => {
     vi.useFakeTimers()
     const healthDeadline = new AbortController()
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(healthDeadline.signal)
@@ -1315,7 +1315,7 @@ describe('the hourly watch on the Gemini key', () => {
     }
   })
 
-  it('records an alert-channel failure when the webhook returns a non-success status', async () => {
+  it('ระบบบันทึกความล้มเหลวเมื่อช่องทางแจ้งเตือนตอบกลับว่าไม่สำเร็จ', async () => {
     sdkMocks.countTokens.mockRejectedValue(new Error('403 API key not valid.'))
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 })) as unknown as typeof fetch
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)

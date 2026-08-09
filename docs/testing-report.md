@@ -6,7 +6,29 @@
 
 **สถานะ: ผ่าน automated quality gates ทั้งหมด**
 
-### รอบล่าสุด — 9 สิงหาคม 2026 (privacy, mock safety, monitoring, budgets และ Worker type gate; local only)
+### รอบล่าสุด — 9 สิงหาคม 2026 (ปิด findings จาก owner review; local only)
+
+รอบนี้ตรวจ `HEAD 70c88f0` พร้อม working tree ที่ย้ายกฎมาสคอตออกจากโมดูลจำแนก error, รวมเงื่อนไขล้าง notice ที่ซ้ำ, เปลี่ยนชื่อ Worker tests ให้เจ้าของอ่านเข้าใจ และแก้ implementation record ให้แยกงานแบรนด์ออกจาก reliability ตามจริง งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ production**
+
+| Layer | Command | Result |
+| --- | --- | --- |
+| RED ของ presentation seam | `npm test -- src/lib/analysis-failure.test.ts` | **exit code 1** — test suite หา `./analysis-presentation` ไม่พบก่อนสร้างโมดูลใหม่ |
+| GREEN ของ presentation + หน้าเว็บ | `npm test -- src/lib/analysis-failure.test.ts src/App.test.tsx` | **109/109 passed** ใน 2 test files |
+| Focused หลังรวมเงื่อนไขและเปลี่ยนชื่อ test | `npm test -- src/App.test.tsx worker/src/index.test.ts` | **121/121 passed** ใน 2 test files |
+| Unit/component/Worker/config ทั้งหมด | `npm test` | **264/264 passed** ใน 13 test files |
+| ทั้งชุด | `npm run verify` | **exit code 0** — 90.7 วินาที |
+| Static analysis | `npm run lint` (ใน `verify`) | passed |
+| Focused/skipped test guard | `npm run test:modifiers` (ใน `verify`) | passed — ไม่พบ modifier ต้องห้ามใน 45 source/test files |
+| Worker types, generated bindings and bundle | `npm run worker:check` (ใน `verify`) | passed — generated bindings ตรง, strict TypeScript ผ่าน และ Wrangler dry-run สำเร็จโดยไม่ deploy |
+| Production dependency audit | `npm audit --omit=dev --audit-level=high` (ใน `verify`) | **found 0 vulnerabilities** |
+| Production build | `npm run build` (ใน `verify`) | passed — transformed 2,003 modules |
+| Production-preview E2E | `npm run test:e2e` (ใน `verify`) | **96/96 passed** — Chromium, Mobile Chrome, Firefox, WebKit |
+| Diff whitespace | `git diff --check` | passed — ไม่มี whitespace error |
+| TestSprite preflight | `testsprite --version` + `testsprite auth whoami` | CLI `0.4.0` และ authentication ผ่าน; **ไม่ได้รัน deployed test** เพราะ URL ใน config ยังเป็น production รุ่นเก่า |
+
+TestSprite project `c76aad7a-c7f9-44a8-a888-a842a4cd386e` ชี้ไป `https://rubriclensai.pages.dev/` แต่ code รอบนี้ยังอยู่ในเครื่อง และ session ไม่มี TestSprite MCP สำหรับ tunnel จึงบันทึกสถานะเป็น `unverified-because-undeployed`; การยิง CLI ตอนนี้จะตรวจ production เก่า ไม่ใช่หลักฐานของ diff นี้
+
+### รอบก่อนหน้า — 9 สิงหาคม 2026 (privacy, mock safety, monitoring, budgets และ Worker type gate; local only)
 
 รอบนี้เริ่มจาก `02d6cb2` และ verify source state ถึง commit `3b9728c` (runtime code ล่าสุดอยู่ที่ `e41f1a6`; CI/docs ล่าสุดอยู่ก่อน commit นี้) รวมการแก้ก่อนหน้า `62be5da`, `9ed5bc7`, `899bfa3`, `885265d`, `99f546d`, `fae793d`, `9716fe7`, `7eefee0`, `f2621da`, `5a7d619`, `3f3acdf`, `30de2cf` และ `a407fef`
 บน Windows, Node.js `24.18.0`, npm `11.16.0` งานยัง **ไม่ได้ push, merge, deploy หรือทดสอบกับ

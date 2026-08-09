@@ -21,7 +21,8 @@ import { ANONYMOUS_TOKEN_KEY, LEGACY_ANONYMOUS_TOKEN_KEY, LEGACY_SESSION_DRAFT_K
 import { PRIVACY_POLICY_PATH } from '@/lib/site-info'
 import { API_VERSION, API_VERSION_HEADER } from '../shared/api-contract'
 import { createMockAnalysis, formatAnalysisResult, formatOverallScore, isNotApplicable, NOT_APPLICABLE_BADGE, parseAnalysisResponse, type AnalysisResult } from './lib/analysis'
-import { ANALYSIS_RETRY_COOLDOWN_MS, analysisErrorFromNetworkFailure, analysisErrorFromParseFailure, analysisErrorFromWorkerResponse, getAnalysisRetryPolicy, normalizeUnexpectedAnalysisError, shouldShowOfflineMascot, type AnalysisFailureCategory, type AnalysisRetryPolicy } from './lib/analysis-failure'
+import { ANALYSIS_RETRY_COOLDOWN_MS, analysisErrorFromNetworkFailure, analysisErrorFromParseFailure, analysisErrorFromWorkerResponse, getAnalysisRetryPolicy, normalizeUnexpectedAnalysisError, type AnalysisFailureCategory, type AnalysisRetryPolicy } from './lib/analysis-failure'
+import { shouldShowOfflineMascot } from './lib/analysis-presentation'
 import { isLikelyPdf, MAX_ANALYSIS_CHARS, MAX_FILE_BYTES, MAX_RAW_CHARS, PDF_LIMITS_LABEL, prepareDocument } from './lib/document'
 import { extractPdfText } from './lib/pdf'
 import { analyzeReferences } from './lib/references'
@@ -320,12 +321,15 @@ function App() {
     })
   }, [state])
 
+  const shouldClearAnalysisNoticeAfterInputChange =
+    !analysisNotice?.retryPolicy ||
+    analysisNotice.category === 'validation' ||
+    analysisNotice.category === 'conflict'
+
   const markContentChanged = (nextText: string) => {
     if (state !== 'analyzing') setState(nextText.trim() ? 'input' : 'idle')
     setResult(null)
-    if (!analysisNotice?.retryPolicy || analysisNotice.category === 'validation' || analysisNotice.category === 'conflict') {
-      setAnalysisNotice(null)
-    }
+    if (shouldClearAnalysisNoticeAfterInputChange) setAnalysisNotice(null)
     setResultActionMessage(null)
     setAppendixConfirmed(false)
     idempotencyKeyRef.current = null
@@ -334,9 +338,7 @@ function App() {
   const markRubricChanged = (nextRubric: RubricSection[]) => {
     setRubric(nextRubric)
     setResult(null)
-    if (!analysisNotice?.retryPolicy || analysisNotice.category === 'validation' || analysisNotice.category === 'conflict') {
-      setAnalysisNotice(null)
-    }
+    if (shouldClearAnalysisNoticeAfterInputChange) setAnalysisNotice(null)
     idempotencyKeyRef.current = null
     if (state === 'result') setState('ready')
   }

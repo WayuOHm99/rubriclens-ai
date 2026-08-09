@@ -12,9 +12,9 @@ import {
   analysisErrorFromWorkerResponse,
   getAnalysisRetryPolicy,
   normalizeUnexpectedAnalysisError,
-  shouldShowOfflineMascot,
   type AnalysisFailureCategory,
 } from './analysis-failure'
+import { shouldShowOfflineMascot } from './analysis-presentation'
 
 describe('analysis failure classification', () => {
   it('keeps retryability separate from quota semantics', () => {

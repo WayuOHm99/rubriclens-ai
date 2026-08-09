@@ -113,9 +113,9 @@ docs/brand/logo/build-mascots.py
 
 ---
 
-## 3. งาน reliability และ CI ที่ทำร่วมกับ Phase 2
+## 3. งานนอกขอบเขตแบรนด์ที่อยู่ใน branch เดียวกัน
 
-สองเรื่องนี้ไม่ใช่การตกแต่งแบรนด์ แต่เป็นความเสี่ยงที่ต้องปิดก่อนส่งงานชุดใหญ่ให้ตรวจ:
+รายการด้านล่าง **ไม่ใช่เกณฑ์รับงานแบรนด์ของ Phase 2** แต่ถูกทำและ commit อยู่ใน branch เดียวกันระหว่างเตรียม owner review จึงต้องตรวจความเสี่ยงแยกจากหน้าตาแบรนด์ เอกสารนี้แจกแจงไว้เพื่อไม่ให้การเปลี่ยนพฤติกรรมระบบถูกซ่อนอยู่ใต้ชื่องานแบรนด์
 
 ### Worker model timeout
 
@@ -131,8 +131,28 @@ docs/brand/logo/build-mascots.py
 
 - quality job มี timeout 30 นาที ป้องกัน run ค้างไม่สิ้นสุด
 - concurrency ยกเลิก run เก่าของ branch/PR เดียวกันเมื่อมี commit ใหม่
+- GitHub Actions จากภายนอกถูกตรึงด้วย commit SHA
+- `npm run verify` ปฏิเสธ test ที่ถูก focus, skip, todo หรือ fixme และมี PR template บังคับให้รายงานหลักฐาน/ความเสี่ยง
 - ยังใช้ job เดียวตามขนาดโปรเจกต์ ไม่แยกหลาย job เพียงเพื่อให้ดูซับซ้อน
 - production audit gate ไม่ถูกลดระดับหรือข้าม
+
+### Cost guard และ scheduled monitoring
+
+- ตัวนับ rate limit, จำนวนคำขอ, token budget และสถิติภาษาเปลี่ยนจากการเขียนยอดรวม key เดิม เป็นหนึ่ง event ต่อหนึ่ง key แล้วรวมยอดตอนอ่าน เพื่อลดความเสี่ยงที่ค่า `null` ล้าสมัยเขียนทับยอดจริง
+- daily request budget ถูกจองก่อนเริ่ม provider call เพื่อไม่ให้คำขอที่เริ่มใช้ทรัพยากรแล้วหลุดจากการนับ
+- scheduled Gemini probe ทำให้ invocation ล้มเมื่อ Gemini ใช้งานไม่ได้หรือ health cache เขียนไม่ได้ และถือ webhook ที่ตอบ non-2xx เป็นการแจ้งเตือนล้มเหลว
+- ค่า aggregate รุ่นเก่ายังถูกอ่านระหว่าง migration แต่ไม่ถูกเขียนเพิ่ม; KV ยังเป็น eventually consistent และไม่ใช่ hard billing ceiling
+
+### PDF extraction safeguards
+
+- การดึงข้อความหยุดเมื่อเกิน 300,000 ตัวอักษรหรือ text items แทนการสร้างข้อมูลทั้งหมดก่อนตรวจ
+- การจัดกลุ่มบรรทัดใช้ y-bucket และการตรวจหลายคอลัมน์ไม่ sort array ใหม่ทุกครั้ง เพื่อลดงานที่โตแบบกำลังสองกับ PDF ที่ซับซ้อน
+
+### Local development และ build verification
+
+- Vite dev server ส่งต่อ `/api` ไปยัง local Worker ที่ `127.0.0.1:8787` เพื่อไม่ให้การทดสอบในเครื่องยิง production โดยไม่ตั้งใจ
+- `worker:check` ตรวจ generated binding, TypeScript ของ Worker และ dry-run bundle ตามลำดับ
+- `shadcn` ถูกย้ายไป `devDependencies` โดยไม่เปลี่ยนเวอร์ชัน; Wrangler ถูกอัปเดตจาก `4.118.x` เป็น `4.120.x` และรายการ install scripts ที่ audit แล้วถูกบันทึกใน `package.json`
 
 ---
 
@@ -144,7 +164,12 @@ Phase 2 ไม่เปลี่ยน:
 - `shared/api-contract.ts` — API version/contract
 - `worker/src/prompt.ts` — prompt และ schema contract ของโมเดล
 
-`worker/src/index.ts` และ `wrangler.jsonc` ถูกแตะเฉพาะการจำกัดเวลารอ/ส่ง abort signal ซึ่งมี focused regression tests ไม่ได้เปลี่ยน scoring, token threshold, model prompt หรือ response shape
+เป้าหมายแบรนด์ไม่ได้แก้ไฟล์เหล่านี้ แต่ branch เดียวกันมีงาน reliability ที่ตรวจแยกตามหัวข้อ 3:
+
+- `worker/src/index.ts` เปลี่ยน deadline/abort, วิธีบันทึก counter events, จังหวะจอง daily request budget และพฤติกรรม scheduled monitoring
+- `wrangler.jsonc` เพิ่ม `enable_request_signal` และแก้คำอธิบายการแจ้งเตือนให้ตรงกับ scheduled invocation
+
+การเปลี่ยนเหล่านี้มี focused regression tests และไม่แก้สูตรคะแนน, API version, model prompt, response shape หรือค่าตัวเลขของ token threshold แต่ **เปลี่ยนวิธีบังคับใช้ budget และวิธีรายงาน outage** จึงต้องรีวิวเป็นงานระบบ ไม่ใช่อนุมานว่าปลอดภัยจากการเป็นส่วนหนึ่งของงานแบรนด์
 
 ---
 
